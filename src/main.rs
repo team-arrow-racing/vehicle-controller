@@ -6,7 +6,7 @@ use panic_probe as _;
 
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, PushPull, PA11, PA12},
+    gpio::{Output, Alternate, PushPull, PA11, PA12, PB13},
     pac::CAN1,
     prelude::*,
     watchdog::IndependentWatchdog,
@@ -39,6 +39,7 @@ mod app {
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
+        status_led: PB13<Output<PushPull>>,
     }
 
     #[init]
@@ -57,6 +58,11 @@ mod app {
 
         // configure monotonic time
         let mono = Systick::new(cx.core.SYST, clocks.sysclk().to_Hz());
+
+        // configure status led
+        let status_led = gpiob
+            .pb13
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
         // configure can bus
         let can = {
@@ -94,11 +100,11 @@ mod app {
         run::spawn_after(Duration::millis(1)).unwrap();
 
         // start heartbeat
-        heartbeat::spawn_after(Duration::millis(1)).unwrap();
+        heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
         (
             Shared { can },
-            Local { watchdog },
+            Local { watchdog, status_led },
             init::Monotonics(mono),
         )
     }
@@ -110,12 +116,17 @@ mod app {
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
-    #[task(shared = [can])]
-    fn heartbeat(_cx: heartbeat::Context) {
-        defmt::debug!("heartbeat!");
+    #[task(shared = [can], local = [status_led])]
+    fn heartbeat(cx: heartbeat::Context) {
+        cx.local.status_led.toggle();
 
-        // repeat every second
-        heartbeat::spawn_after(Duration::millis(1000)).unwrap();
+        if cx.local.status_led.is_set_high() {
+            defmt::debug!("heartbeat!");
+            heartbeat::spawn_after(Duration::millis(10)).unwrap();
+        }
+        else {
+            heartbeat::spawn_after(Duration::millis(990)).unwrap();
+        }
     }
 
     #[task(shared = [can], binds = CAN1_RX0)]
