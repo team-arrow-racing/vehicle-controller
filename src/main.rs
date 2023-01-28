@@ -141,7 +141,6 @@ mod app {
                             },
                             bxcan::Id::Extended(_) => todo!(),
                         }
-                        
                     }
                     Err(nb::Error::WouldBlock) => break,
                     Err(nb::Error::Other(_)) => {} // Ignore overrun errors.
@@ -152,14 +151,11 @@ mod app {
 
     #[idle]
     fn idle(_: idle::Context) -> ! {
-        // if the idle task is entered (there is no scheduled tasks) we will
-        // idle until the watchdog timer resets the device.
         loop {
-            cortex_m::asm::nop(); // prevent loop from being optomised away.
+            cortex_m::asm::nop();
         }
     }
 
-    // show millisecond timestamp in debug log
     defmt::timestamp!("{=u64}ms", { monotonics::now().ticks() });
 }
 
