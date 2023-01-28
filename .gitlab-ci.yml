@@ -1,0 +1,30 @@
+image: "rust:latest"
+
+stages:
+  - build
+  - lint
+
+build:
+  stage: build
+  image: rust:latest
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - target/
+      - .cargo/
+  script:
+    - cargo build
+
+lint:
+  stage: lint
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-lint"
+    paths:
+      - target/
+      - .cargo/
+  script:
+    - rustup component add rustfmt
+    - rustup component add clippy
+    - cargo fmt --all -- --check
+    - cargo clippy
