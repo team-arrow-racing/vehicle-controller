@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "cwd": "${workspaceRoot}",
+            "name": "Flash & Debug",
+            // build latest firmware first!
+            "preLaunchTask": "rust: cargo build",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            "gdbTarget": ":3333",
+            "runToEntryPoint": "main",
+            "executable": "./target/thumbv7em-none-eabi/debug/vehicle-controller",
+            "svdFile": "STM32L4x3.svd",
+            "gdbPath": "arm-none-eabi-gdb", // or gdb or multiarch-gdb
+            "configFiles": [
+                "openocd.cfg",
+            ],
+        },
+        {
+            "cwd": "${workspaceRoot}",
+            "name": "Attach Debug",
+            "request": "attach",
+            "type": "cortex-debug",
+            "servertype": "external",
+            "gdbTarget": ":3333",
+            // TODO adjust all these to fit your system, program and hardware
+            "executable": "./target/thumbv7em-none-eabi/debug/vehicle-controller",
+            "gdbPath": "arm-none-eabi-gdb", // or gdb or multiarch-gdb
+            "svdFile": "STM32L4x3.svd",
+        }
+    ]
+}
