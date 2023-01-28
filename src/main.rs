@@ -100,7 +100,7 @@ mod app {
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
         // start main loop
-        run::spawn();
+        run::spawn().unwrap();
 
         (
             Shared { can },
