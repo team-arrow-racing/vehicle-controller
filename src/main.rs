@@ -6,7 +6,7 @@ use panic_probe as _;
 
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Output, Alternate, PushPull, PA11, PA12, PB13},
+    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
     pac::CAN1,
     prelude::*,
     watchdog::IndependentWatchdog,
@@ -17,10 +17,7 @@ use systick_monotonic::{
     Systick,
 };
 
-use bxcan::{
-    filter::Mask32,
-    Interrupts,
-};
+use bxcan::{filter::Mask32, Interrupts};
 
 type Duration = MillisDurationU64;
 
@@ -33,7 +30,12 @@ mod app {
 
     #[shared]
     struct Shared {
-        can: bxcan::Can<Can<CAN1, (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>)>>,
+        can: bxcan::Can<
+            Can<
+                CAN1,
+                (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>),
+            >,
+        >,
     }
 
     #[local]
@@ -66,14 +68,16 @@ mod app {
 
         // configure can bus
         let can = {
-            let rx =
-                gpioa
-                    .pa11
-                    .into_alternate(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh);
-            let tx =
-                gpioa
-                    .pa12
-                    .into_alternate(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrh);
+            let rx = gpioa.pa11.into_alternate(
+                &mut gpioa.moder,
+                &mut gpioa.otyper,
+                &mut gpioa.afrh,
+            );
+            let tx = gpioa.pa12.into_alternate(
+                &mut gpioa.moder,
+                &mut gpioa.otyper,
+                &mut gpioa.afrh,
+            );
 
             let can = Can::new(&mut rcc.apb1r1, cx.device.CAN1, (tx, rx));
 
@@ -87,7 +91,8 @@ mod app {
         can.modify_filters().enable_bank(0, Mask32::accept_all());
 
         can.enable_interrupts(
-            Interrupts::TRANSMIT_MAILBOX_EMPTY | Interrupts::FIFO0_MESSAGE_PENDING,
+            Interrupts::TRANSMIT_MAILBOX_EMPTY
+                | Interrupts::FIFO0_MESSAGE_PENDING,
         );
         nb::block!(can.enable_non_blocking()).unwrap();
 
@@ -104,7 +109,10 @@ mod app {
 
         (
             Shared { can },
-            Local { watchdog, status_led },
+            Local {
+                watchdog,
+                status_led,
+            },
             init::Monotonics(mono),
         )
     }
@@ -123,8 +131,7 @@ mod app {
         if cx.local.status_led.is_set_high() {
             defmt::debug!("heartbeat!");
             heartbeat::spawn_after(Duration::millis(10)).unwrap();
-        }
-        else {
+        } else {
             heartbeat::spawn_after(Duration::millis(990)).unwrap();
         }
     }
