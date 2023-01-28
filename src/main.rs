@@ -96,11 +96,11 @@ mod app {
         watchdog.stop_on_debug(&cx.device.DBGMCU, true);
         watchdog.start(MillisDurationU32::millis(100));
 
-        // start main loop
-        run::spawn_after(Duration::millis(1)).unwrap();
-
         // start heartbeat
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
+
+        // start main loop
+        run::spawn();
 
         (
             Shared { can },
