@@ -18,6 +18,7 @@ nb = "1.0.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 stm32l4xx-hal = { version = "0.7.1", features = [ "stm32l451", "rt"] }
 systick-monotonic = "1.0.1"
+wurth-calypso = "0.1.0"
 
 [dev-dependencies]
 defmt-test = "0.3"

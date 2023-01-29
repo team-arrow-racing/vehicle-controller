@@ -22,8 +22,7 @@ use bxcan::{filter::Mask32, Interrupts};
 
 type Duration = MillisDurationU64;
 
-mod calypso;
-use crate::calypso::Calypso;
+use wurth_calypso::Calypso;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
 mod app {
