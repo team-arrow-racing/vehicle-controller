@@ -6,9 +6,10 @@ use panic_probe as _;
 
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
-    pac::CAN1,
+    gpio::{Alternate, Output, PushPull, PA10, PA11, PA12, PA9, PB13},
+    pac::{CAN1, USART1},
     prelude::*,
+    serial::{Config, Serial},
     watchdog::IndependentWatchdog,
 };
 
@@ -20,6 +21,9 @@ use systick_monotonic::{
 use bxcan::{filter::Mask32, Interrupts};
 
 type Duration = MillisDurationU64;
+
+mod calypso;
+use crate::calypso::Calypso;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
 mod app {
@@ -34,6 +38,12 @@ mod app {
             Can<
                 CAN1,
                 (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>),
+            >,
+        >,
+        calypso: Calypso<
+            Serial<
+                USART1,
+                (PA9<Alternate<PushPull, 7>>, PA10<Alternate<PushPull, 7>>),
             >,
         >,
     }
@@ -101,6 +111,30 @@ mod app {
         watchdog.stop_on_debug(&cx.device.DBGMCU, true);
         watchdog.start(MillisDurationU32::millis(100));
 
+        // configure calypso
+        let calypso = {
+            let tx = gpioa.pa9.into_alternate(
+                &mut gpioa.moder,
+                &mut gpioa.otyper,
+                &mut gpioa.afrh,
+            );
+            let rx = gpioa.pa10.into_alternate(
+                &mut gpioa.moder,
+                &mut gpioa.otyper,
+                &mut gpioa.afrh,
+            );
+
+            let serial = Serial::usart1(
+                cx.device.USART1,
+                (tx, rx),
+                Config::default().baudrate(921600.bps()).parity_even(),
+                clocks,
+                &mut rcc.apb2,
+            );
+
+            Calypso::new(serial)
+        };
+
         // start heartbeat
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
@@ -108,7 +142,7 @@ mod app {
         run::spawn().unwrap();
 
         (
-            Shared { can },
+            Shared { can, calypso },
             Local {
                 watchdog,
                 status_led,
