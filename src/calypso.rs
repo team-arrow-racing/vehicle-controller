@@ -13,29 +13,41 @@ where
         Calypso { serial }
     }
 
-    pub fn command_start(&mut self) {
+    pub fn command_start(&mut self) -> Result<(), &'static str> {
         self.write_command("start");
+
+        Ok(())
     }
 
-    pub fn command_stop(&mut self) {
+    pub fn command_stop(&mut self) -> Result<(), &'static str> {
         self.write_command("stop");
+
+        Ok(())
     }
 
-    pub fn command_test(&mut self) {
+    pub fn command_test(&mut self) -> Result<(), &'static str> {
         self.write_command("test");
+
+        Ok(())
     }
 
-    pub fn command_reboot(&mut self) {
+    pub fn command_reboot(&mut self) -> Result<(), &'static str> {
         self.write_command("reboot");
+
+        Ok(())
     }
 
-    pub fn command_factory_reset(&mut self) {
+    pub fn command_factory_reset(&mut self) -> Result<(), &'static str> {
         self.write_command("factoryreset");
+
+        Ok(())
     }
 
-    pub fn write_command(&mut self, command: &str) {
+    pub fn write_command(&mut self, command: &str) -> Result<&'static str, &'static str> {
         self.serial.write_str("AT+").unwrap();
         self.serial.write_str(command).unwrap();
         self.serial.write_str("\r\n").unwrap();
+        
+        Ok("")
     }
 }
