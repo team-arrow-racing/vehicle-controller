@@ -5,6 +5,8 @@ pub struct Calypso<S> {
     serial: S,
 }
 
+type Duration = systick_monotonic::fugit::SecsDurationU32;
+
 impl<S> Calypso<S>
 where
     S: Read<u8> + Write,
@@ -39,6 +41,14 @@ where
 
     pub fn factory_reset(&mut self) -> Result<(), &'static str> {
         self.command("factoryreset");
+
+        Ok(())
+    }
+
+    pub fn sleep(&mut self, time: Duration) -> Result<(), &'static str> {
+        assert!(time <= Duration::secs(86400));
+
+        self.command(write!(data));
 
         Ok(())
     }
