@@ -108,7 +108,7 @@ mod app {
         // configure watchdog
         let mut watchdog = IndependentWatchdog::new(cx.device.IWDG);
         watchdog.stop_on_debug(&cx.device.DBGMCU, true);
-        //watchdog.start(MillisDurationU32::millis(100));
+        watchdog.start(MillisDurationU32::millis(100));
 
         // configure calypso
         let calypso = {
@@ -158,7 +158,7 @@ mod app {
             can.try_transmit();
         });
 
-        run::spawn_after(Duration::millis(100)).unwrap();
+        run::spawn_after(Duration::millis(10)).unwrap();
     }
 
     #[task(shared = [can], local = [status_led])]
