@@ -9,8 +9,8 @@ use heapless::spsc::Queue;
 type Interface =
     Can<CAN1, (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>)>;
 
-type TxQueue = Queue<bxcan::Frame, 32>;
-type RxQueue = Queue<bxcan::Frame, 32>;
+type TxQueue = Queue<bxcan::Frame, 128>;
+type RxQueue = Queue<bxcan::Frame, 128>;
 
 pub struct QueuedCan {
     can: bxcan::Can<Interface>,
