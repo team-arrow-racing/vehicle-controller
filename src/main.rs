@@ -173,7 +173,7 @@ mod app {
                 can.transmit(bxcan::Frame::new_data(
                     bxcan::StandardId::new(0x50).unwrap(),
                     bxcan::Data::empty(),
-                ));
+                )).unwrap();
             });
 
             heartbeat::spawn_after(Duration::millis(100)).unwrap();
