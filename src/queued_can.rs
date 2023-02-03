@@ -10,10 +10,12 @@ type Interface =
     Can<CAN1, (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>)>;
 
 type TxQueue = Queue<bxcan::Frame, 32>;
+type RxQueue = Queue<bxcan::Frame, 32>;
 
 pub struct QueuedCan {
     can: bxcan::Can<Interface>,
     tx_queue: TxQueue,
+    rx_queue: RxQueue,
 }
 
 impl QueuedCan {
@@ -21,6 +23,7 @@ impl QueuedCan {
         QueuedCan {
             can,
             tx_queue: TxQueue::new(),
+            rx_queue: RxQueue::new(),
         }
     }
 
@@ -40,6 +43,20 @@ impl QueuedCan {
                 self.can.transmit(&f).unwrap();
             }
             None => {}
+        }
+    }
+
+    pub fn receive(&mut self) -> Option<bxcan::Frame> {
+        self.rx_queue.dequeue()
+    }
+
+    pub fn try_receive(&mut self) {
+        loop {
+            match self.can.receive() {
+                Ok(f) => { self.rx_queue.enqueue(f); },
+                Err(nb::Error::WouldBlock) => break,
+                Err(nb::Error::Other(_)) => {},
+            }
         }
     }
 }
