@@ -6,7 +6,7 @@ use panic_probe as _;
 
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, PA10, PA11, PA12, PA9, PB13},
+    gpio::{Alternate, Output, PushPull, PA10, PA9, PB13},
     pac::{CAN1, USART1},
     prelude::*,
     serial::{Config, Serial},
@@ -18,9 +18,12 @@ use systick_monotonic::{
     Systick,
 };
 
-use bxcan::{filter::Mask32, Interrupts};
+use bxcan::{filter::Mask32, Data, Frame, Interrupts};
 
 type Duration = MillisDurationU64;
+
+mod queued_can;
+use queued_can::QueuedCan;
 
 use wurth_calypso::Calypso;
 
@@ -33,12 +36,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        can: bxcan::Can<
-            Can<
-                CAN1,
-                (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>),
-            >,
-        >,
+        can: QueuedCan,
         calypso: Calypso<
             Serial<
                 USART1,
@@ -101,14 +99,16 @@ mod app {
 
         can.enable_interrupts(
             Interrupts::TRANSMIT_MAILBOX_EMPTY
-                | Interrupts::FIFO0_MESSAGE_PENDING,
+                //| Interrupts::FIFO0_MESSAGE_PENDING,
         );
         nb::block!(can.enable_non_blocking()).unwrap();
+
+        let mut can = QueuedCan::new(can);
 
         // configure watchdog
         let mut watchdog = IndependentWatchdog::new(cx.device.IWDG);
         watchdog.stop_on_debug(&cx.device.DBGMCU, true);
-        watchdog.start(MillisDurationU32::millis(100));
+        //watchdog.start(MillisDurationU32::millis(100));
 
         // configure calypso
         let calypso = {
@@ -150,42 +150,44 @@ mod app {
         )
     }
 
-    #[task(shared = [], local = [watchdog])]
-    fn run(cx: run::Context) {
+    #[task(shared = [can], local = [watchdog])]
+    fn run(mut cx: run::Context) {
         cx.local.watchdog.feed();
 
-        run::spawn_after(Duration::millis(10)).unwrap();
+        cx.shared.can.lock(|can| {
+            can.try_transmit();
+        });
+
+        run::spawn_after(Duration::millis(100)).unwrap();
     }
 
     #[task(shared = [can], local = [status_led])]
-    fn heartbeat(cx: heartbeat::Context) {
-        cx.local.status_led.toggle();
-
-        if cx.local.status_led.is_set_high() {
+    fn heartbeat(mut cx: heartbeat::Context) {
+        if cx.local.status_led.is_set_low() {
             defmt::debug!("heartbeat!");
+
+            cx.local.status_led.set_high();
+
+            // send heartbeat message
+            cx.shared.can.lock(|can| {
+                can.transmit(bxcan::Frame::new_data(
+                    bxcan::StandardId::new(0x50).unwrap(),
+                    bxcan::Data::empty(),
+                ));
+            });
+
             heartbeat::spawn_after(Duration::millis(100)).unwrap();
         } else {
+            cx.local.status_led.set_low();
+
             heartbeat::spawn_after(Duration::millis(900)).unwrap();
         }
     }
 
-    #[task(shared = [can], binds = CAN1_RX0)]
-    fn can_receive(mut cx: can_receive::Context) {
+    #[task(shared = [can], binds = CAN1_TX)]
+    fn can_tx_empty(mut cx: can_tx_empty::Context) {
         cx.shared.can.lock(|can| {
-            loop {
-                match can.receive() {
-                    Ok(frame) => {
-                        match frame.id() {
-                            bxcan::Id::Standard(id) => {
-                                defmt::println!("received standard-id message: id: {:#03x} {=[u8]:#03x}", id.as_raw(), frame.data().unwrap());
-                            },
-                            bxcan::Id::Extended(_) => todo!(),
-                        }
-                    }
-                    Err(nb::Error::WouldBlock) => break,
-                    Err(nb::Error::Other(_)) => {} // Ignore overrun errors.
-                }
-            }
+            can.try_transmit();
         });
     }
 
