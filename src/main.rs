@@ -103,7 +103,7 @@ mod app {
         );
         nb::block!(can.enable_non_blocking()).unwrap();
 
-        let mut can = QueuedCan::new(can);
+        let can = QueuedCan::new(can);
 
         // configure watchdog
         let mut watchdog = IndependentWatchdog::new(cx.device.IWDG);
