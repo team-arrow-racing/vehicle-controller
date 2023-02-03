@@ -562,5 +562,4 @@ checksum = "3e47969cc5da18bc9fc04f0c1feb2ecc98ff71d41a4a66644b08375e9542b39b"
 dependencies = [
  "embedded-hal",
  "fugit",
- "heapless",
 ]
