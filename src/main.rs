@@ -7,7 +7,7 @@ use panic_probe as _;
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA10, PA9, PB13},
-    pac::{CAN1, USART1},
+    pac::{USART1},
     prelude::*,
     serial::{Config, Serial},
     watchdog::IndependentWatchdog,
@@ -18,7 +18,7 @@ use systick_monotonic::{
     Systick,
 };
 
-use bxcan::{filter::Mask32, Data, Frame, Interrupts};
+use bxcan::{filter::Mask32, Interrupts};
 
 type Duration = MillisDurationU64;
 
