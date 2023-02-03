@@ -32,7 +32,7 @@ impl QueuedCan {
         frame: bxcan::Frame,
     ) -> Result<(), &'static str> {
         match self.tx_queue.enqueue(frame) {
-            Ok(v) => Ok(()),
+            Ok(_) => Ok(()),
             Err(_) => Err("queue is full"),
         }
     }
