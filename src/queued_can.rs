@@ -50,13 +50,15 @@ impl QueuedCan {
         self.rx_queue.dequeue()
     }
 
-    pub fn try_receive(&mut self) {
+    pub fn try_receive(&mut self) -> Result<(), &'static str> {
         loop {
             match self.can.receive() {
-                Ok(f) => { self.rx_queue.enqueue(f); },
+                Ok(f) => self.rx_queue.enqueue(f).unwrap(),
                 Err(nb::Error::WouldBlock) => break,
-                Err(nb::Error::Other(_)) => {},
+                Err(nb::Error::Other(_)) => { continue; },
             }
         }
+
+        Ok(())
     }
 }
