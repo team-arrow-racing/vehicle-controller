@@ -200,6 +200,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "elmar-mppt"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "531788023aaa81205cccf77ffb6b7d6dedf94f751cde52f18fe12d5d06fecb84"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "embedded-dma"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -514,7 +523,9 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "defmt-test",
+ "elmar-mppt",
  "embedded-hal",
+ "heapless",
  "nb 1.0.0",
  "panic-probe",
  "stm32l4xx-hal",
@@ -551,4 +562,5 @@ checksum = "3e47969cc5da18bc9fc04f0c1feb2ecc98ff71d41a4a66644b08375e9542b39b"
 dependencies = [
  "embedded-hal",
  "fugit",
+ "heapless",
 ]
