@@ -163,9 +163,9 @@ mod app {
 
         if cx.local.status_led.is_set_high() {
             defmt::debug!("heartbeat!");
-            heartbeat::spawn_after(Duration::millis(10)).unwrap();
+            heartbeat::spawn_after(Duration::millis(100)).unwrap();
         } else {
-            heartbeat::spawn_after(Duration::millis(990)).unwrap();
+            heartbeat::spawn_after(Duration::millis(900)).unwrap();
         }
     }
 
