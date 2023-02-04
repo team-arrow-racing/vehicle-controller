@@ -89,8 +89,7 @@ mod app {
                 cx.device.CAN1,
                 (tx, rx),
             ))
-            .set_bit_timing(0x001c_0009) // 500kbit/s
-            .set_loopback(false);
+            .set_bit_timing(0x001c_0009); // 500kbit/s
 
             let mut can = can.enable();
             can.modify_filters().enable_bank(0, Mask32::accept_all());
