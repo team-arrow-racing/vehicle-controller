@@ -4,21 +4,19 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
+use bxcan::{filter::Mask32, Data, Frame, Interrupts, StandardId};
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA10, PA9, PB13},
-    pac::{USART1},
+    pac::USART1,
     prelude::*,
     serial::{Config, Serial},
     watchdog::IndependentWatchdog,
 };
-
 use systick_monotonic::{
     fugit::{MillisDurationU32, MillisDurationU64},
     Systick,
 };
-
-use bxcan::{filter::Mask32, Interrupts};
 
 type Duration = MillisDurationU64;
 
@@ -86,20 +84,17 @@ mod app {
                 &mut gpioa.afrh,
             );
 
-            let can = Can::new(&mut rcc.apb1r1, cx.device.CAN1, (tx, rx));
+            let can = bxcan::Can::builder(Can::new(
+                &mut rcc.apb1r1,
+                cx.device.CAN1,
+                (tx, rx),
+            ))
+            .set_bit_timing(0x001c_0009) // 500kbit/s
+            .set_loopback(false);
 
-            let can = bxcan::Can::builder(can)
-                .set_bit_timing(0x001c_0009) // 500kbit/s
-                .set_loopback(false);
-            
             let mut can = can.enable();
-
             can.modify_filters().enable_bank(0, Mask32::accept_all());
-
-            can.enable_interrupts(
-                Interrupts::TRANSMIT_MAILBOX_EMPTY
-                    //| Interrupts::FIFO0_MESSAGE_PENDING,
-            );
+            can.enable_interrupts(Interrupts::TRANSMIT_MAILBOX_EMPTY);
             nb::block!(can.enable_non_blocking()).unwrap();
 
             QueuedCan::new(can)
@@ -176,10 +171,11 @@ mod app {
 
             // send heartbeat message
             cx.shared.can.lock(|can| {
-                can.transmit(bxcan::Frame::new_data(
-                    bxcan::StandardId::new(0x50).unwrap(),
-                    bxcan::Data::empty(),
-                )).unwrap();
+                can.transmit(Frame::new_data(
+                    StandardId::new(0x50).unwrap(),
+                    Data::empty(),
+                ))
+                .unwrap();
             });
 
             heartbeat::spawn_after(Duration::millis(100)).unwrap();
@@ -190,9 +186,11 @@ mod app {
         }
     }
 
+    /// triggers on TX mailbox empty.
     #[task(shared = [can], binds = CAN1_TX)]
     fn can_tx_empty(mut cx: can_tx_empty::Context) {
         cx.shared.can.lock(|can| {
+            /// try and send another message if there is one queued.
             can.try_transmit();
         });
     }

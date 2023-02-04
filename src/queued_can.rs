@@ -55,7 +55,9 @@ impl QueuedCan {
             match self.can.receive() {
                 Ok(f) => self.rx_queue.enqueue(f).unwrap(),
                 Err(nb::Error::WouldBlock) => break,
-                Err(nb::Error::Other(_)) => { continue; },
+                Err(nb::Error::Other(_)) => {
+                    continue;
+                }
             }
         }
 
