@@ -88,27 +88,31 @@ mod app {
 
             let can = Can::new(&mut rcc.apb1r1, cx.device.CAN1, (tx, rx));
 
-            bxcan::Can::builder(can)
-        }
-        .set_bit_timing(0x001c_0009) // 500kbit/s
-        .set_loopback(false);
+            let can = bxcan::Can::builder(can)
+                .set_bit_timing(0x001c_0009) // 500kbit/s
+                .set_loopback(false);
+            
+            let mut can = can.enable();
 
-        let mut can = can.enable();
+            can.modify_filters().enable_bank(0, Mask32::accept_all());
 
-        can.modify_filters().enable_bank(0, Mask32::accept_all());
+            can.enable_interrupts(
+                Interrupts::TRANSMIT_MAILBOX_EMPTY
+                    //| Interrupts::FIFO0_MESSAGE_PENDING,
+            );
+            nb::block!(can.enable_non_blocking()).unwrap();
 
-        can.enable_interrupts(
-            Interrupts::TRANSMIT_MAILBOX_EMPTY
-                //| Interrupts::FIFO0_MESSAGE_PENDING,
-        );
-        nb::block!(can.enable_non_blocking()).unwrap();
-
-        let can = QueuedCan::new(can);
+            QueuedCan::new(can)
+        };
 
         // configure watchdog
-        let mut watchdog = IndependentWatchdog::new(cx.device.IWDG);
-        watchdog.stop_on_debug(&cx.device.DBGMCU, true);
-        watchdog.start(MillisDurationU32::millis(100));
+        let watchdog = {
+            let mut wd = IndependentWatchdog::new(cx.device.IWDG);
+            wd.stop_on_debug(&cx.device.DBGMCU, true);
+            wd.start(MillisDurationU32::millis(100));
+
+            wd
+        };
 
         // configure calypso
         let calypso = {
