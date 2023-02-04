@@ -190,7 +190,7 @@ mod app {
     #[task(shared = [can], binds = CAN1_TX)]
     fn can_tx_empty(mut cx: can_tx_empty::Context) {
         cx.shared.can.lock(|can| {
-            /// try and send another message if there is one queued.
+            // try and send another message if there is one queued.
             can.try_transmit();
         });
     }
