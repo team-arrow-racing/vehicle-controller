@@ -53,7 +53,7 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
-        defmt::info!("init");
+        defmt::info!("starting init.");
 
         // peripherals
         let mut flash = cx.device.FLASH.constrain();
@@ -143,6 +143,8 @@ mod app {
 
         // start main loop
         run::spawn().unwrap();
+
+        defmt::info!("finished init.");
 
         (
             Shared { can, calypso },
