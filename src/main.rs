@@ -4,7 +4,7 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Data, Frame, Interrupts, StandardId};
+use bxcan::{filter::Mask32, Interrupts};
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA10, PA9, PB13},
@@ -20,12 +20,13 @@ use systick_monotonic::{
 
 type Duration = MillisDurationU64;
 
+mod comms;
+use comms::msg;
+
 mod queued_can;
 use queued_can::QueuedCan;
 
 use wurth_calypso::Calypso;
-
-use sae_j1939::{IdStandard, IdExtended};
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
 mod app {
@@ -96,14 +97,19 @@ mod app {
             let mut can = can.enable();
             can.modify_filters().enable_bank(0, Mask32::accept_all());
             can.enable_interrupts(
-                Interrupts::TRANSMIT_MAILBOX_EMPTY |
-                Interrupts::FIFO0_MESSAGE_PENDING |
-                Interrupts::FIFO1_MESSAGE_PENDING
+                Interrupts::TRANSMIT_MAILBOX_EMPTY
+                    | Interrupts::FIFO0_MESSAGE_PENDING
+                    | Interrupts::FIFO1_MESSAGE_PENDING,
             );
             nb::block!(can.enable_non_blocking()).unwrap();
 
-            QueuedCan::new(can)
+            let mut can = QueuedCan::new(can);
+            can.transmit(msg::startup());
+
+            can
         };
+
+        // broadcast startup message.
 
         // configure watchdog
         let watchdog = {
@@ -176,11 +182,7 @@ mod app {
 
             // send heartbeat message
             cx.shared.can.lock(|can| {
-                can.transmit(Frame::new_data(
-                    StandardId::new(0x50).unwrap(),
-                    Data::empty(),
-                ))
-                .unwrap();
+                can.transmit(msg::heartbeat()).unwrap();
             });
 
             heartbeat::spawn_after(Duration::millis(100)).unwrap();
