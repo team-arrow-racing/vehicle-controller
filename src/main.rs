@@ -26,6 +26,8 @@ use comms::msg;
 mod queued_can;
 use queued_can::QueuedCan;
 
+use solar_car::device;
+
 use wurth_calypso::Calypso;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
@@ -104,7 +106,7 @@ mod app {
             nb::block!(can.enable_non_blocking()).unwrap();
 
             let mut can = QueuedCan::new(can);
-            
+
             can.transmit(msg::startup()).unwrap();
 
             can
@@ -183,7 +185,10 @@ mod app {
 
             // send heartbeat message
             cx.shared.can.lock(|can| {
-                can.transmit(msg::heartbeat()).unwrap();
+                can.transmit(device::heartbeat_msg(
+                    device::Device::VehicleController,
+                ))
+                .unwrap();
             });
 
             heartbeat::spawn_after(Duration::millis(100)).unwrap();

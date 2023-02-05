@@ -1,12 +1,11 @@
 use bitflags::bitflags;
-use bxcan::{Data, ExtendedId, Frame};
+use bxcan::{ExtendedId, Frame};
 use sae_j1939::IdExtended;
+use solar_car::device;
 use stm32l4xx_hal::pac;
 
 pub mod msg {
     use super::*;
-
-    static SOURCE_ADDRESS: u8 = 0x10;
 
     /// To be sent on device initialisation.
     pub fn startup() -> Frame {
@@ -16,27 +15,16 @@ pub mod msg {
             data_page: false,
             pdu_format: 0xFF,
             pdu_specific: 0x00,
-            source_address: SOURCE_ADDRESS,
+            source_address: device::source_address(
+                device::Device::VehicleController,
+            )
+            .unwrap(),
         };
 
         Frame::new_data(
             ExtendedId::new(id.to_bits()).unwrap(),
             [reset_flags().bits()],
         )
-    }
-
-    /// To be sent at regular intervals.
-    pub fn heartbeat() -> Frame {
-        let id = IdExtended {
-            priority: 6,
-            ext_data_page: false,
-            data_page: false,
-            pdu_format: 0xFF,
-            pdu_specific: 0x00,
-            source_address: SOURCE_ADDRESS,
-        };
-
-        Frame::new_data(ExtendedId::new(id.to_bits()).unwrap(), Data::empty())
     }
 
     bitflags! {
