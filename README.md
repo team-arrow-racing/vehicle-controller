@@ -2,7 +2,18 @@
 
 Responstivle for controlling the main function of the vehicle.
 
-## Operation
+## Setup
+
+```shell
+# Add cross-compilation target
+rustup target add thumbv7em-none-eabi
+# Install probe-run
+cargo install probe-run
+```
+
+On Linux you may need to configure your udev rules to allow running without root.
+
+## Running
 
 The following will compile, flash and debug the program.
 
