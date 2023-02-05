@@ -104,7 +104,8 @@ mod app {
             nb::block!(can.enable_non_blocking()).unwrap();
 
             let mut can = QueuedCan::new(can);
-            can.transmit(msg::startup());
+            
+            can.transmit(msg::startup()).unwrap();
 
             can
         };
