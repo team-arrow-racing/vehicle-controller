@@ -95,7 +95,11 @@ mod app {
 
             let mut can = can.enable();
             can.modify_filters().enable_bank(0, Mask32::accept_all());
-            can.enable_interrupts(Interrupts::TRANSMIT_MAILBOX_EMPTY);
+            can.enable_interrupts(
+                Interrupts::TRANSMIT_MAILBOX_EMPTY |
+                Interrupts::FIFO0_MESSAGE_PENDING |
+                Interrupts::FIFO1_MESSAGE_PENDING
+            );
             nb::block!(can.enable_non_blocking()).unwrap();
 
             QueuedCan::new(can)
@@ -185,6 +189,22 @@ mod app {
 
             heartbeat::spawn_after(Duration::millis(900)).unwrap();
         }
+    }
+
+    /// Triggers on RX mailbox event.
+    #[task(shared = [can], binds = CAN1_RX0)]
+    fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
+        cx.shared.can.lock(|can| {
+            can.try_receive();
+        });
+    }
+
+    /// Triggers on RX mailbox event.
+    #[task(shared = [can], binds = CAN1_RX1)]
+    fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
+        cx.shared.can.lock(|can| {
+            can.try_receive();
+        });
     }
 
     /// triggers on TX mailbox empty.
