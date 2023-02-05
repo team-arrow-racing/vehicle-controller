@@ -5,9 +5,22 @@
 			"type": "process",
 			"command": "cargo",
 			"args": [
-                "build",
-				"--target",
-				"thumbv7em-none-eabi"
+				"build",
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			},
+			"label": "rust: cargo build"
+		},
+		{
+			"type": "process",
+			"command": "cargo",
+			"args": [
+				"run",
 			],
 			"problemMatcher": [
 				"$rustc"
@@ -16,7 +29,7 @@
 				"kind": "build",
 				"isDefault": true
 			},
-			"label": "rust: cargo build"
+			"label": "rust: cargo run"
 		}
 	]
 }
