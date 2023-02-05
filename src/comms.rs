@@ -19,11 +19,9 @@ pub mod msg {
             source_address: SOURCE_ADDRESS,
         };
 
-        let reset_flags = reset_flags();
-
         Frame::new_data(
             ExtendedId::new(id.to_bits()).unwrap(),
-            [reset_flags.bits()],
+            [reset_flags().bits()],
         )
     }
 
