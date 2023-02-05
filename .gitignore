@@ -1,2 +1,9 @@
-/target
+# cargo
+debug/
+target/
+
+# rustfmt
+**/*.rs.bk
+
+# vscode
 /.vscode/.cortex-debug.*.state.json
