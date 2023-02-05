@@ -195,7 +195,7 @@ mod app {
     #[task(shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
         cx.shared.can.lock(|can| {
-            can.try_receive();
+            can.try_receive().unwrap();
         });
     }
 
@@ -203,7 +203,7 @@ mod app {
     #[task(shared = [can], binds = CAN1_RX1)]
     fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
         cx.shared.can.lock(|can| {
-            can.try_receive();
+            can.try_receive().unwrap();
         });
     }
 
