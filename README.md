@@ -31,7 +31,7 @@ DEFMT_LOG=info cargo run
 - [RM0394 Reference Manual for STM32L41xxx/42xxx/43xxx/44xxx/45xxx/46xxx](https://www.st.com/resource/en/reference_manual/dm00151940-stm32l41xxx42xxx43xxx44xxx45xxx46xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
 - [Calypso Wi-Fi Module Reference](https://www.we-online.com/components/products/manual/2610011025000_Calypso%20261001102500x%20Manual_rev2.0.pdf)
 
-# About Team Arrow
+## About Team Arrow
 
 Team Arrow Racing Association is a volunteer organisation that designs, develops and races world-class solar powered vehicles. This repository is part of our endevour to build in the open and make our learnings accessible to anyone.
 
