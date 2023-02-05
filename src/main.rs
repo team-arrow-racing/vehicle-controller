@@ -20,15 +20,14 @@ use systick_monotonic::{
 
 type Duration = MillisDurationU64;
 
-mod comms;
-use comms::msg;
-
 mod queued_can;
 use queued_can::QueuedCan;
 
 use solar_car::device;
 
 use wurth_calypso::Calypso;
+
+static DEVICE: device::Device = device::Device::VehicleController;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
 mod app {
@@ -107,7 +106,7 @@ mod app {
 
             let mut can = QueuedCan::new(can);
 
-            can.transmit(msg::startup()).unwrap();
+            can.transmit(device::startup_msg(DEVICE)).unwrap();
 
             can
         };
@@ -185,10 +184,7 @@ mod app {
 
             // send heartbeat message
             cx.shared.can.lock(|can| {
-                can.transmit(device::heartbeat_msg(
-                    device::Device::VehicleController,
-                ))
-                .unwrap();
+                can.transmit(device::heartbeat_msg(DEVICE)).unwrap();
             });
 
             heartbeat::spawn_after(Duration::millis(100)).unwrap();
