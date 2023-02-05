@@ -2,6 +2,7 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			// needed for building before debug.
 			"type": "process",
 			"command": "cargo",
 			"args": [
