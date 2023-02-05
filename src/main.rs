@@ -25,6 +25,8 @@ use queued_can::QueuedCan;
 
 use wurth_calypso::Calypso;
 
+use sae_j1939::{IdStandard, IdExtended};
+
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
 mod app {
     use super::*;

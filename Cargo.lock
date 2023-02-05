@@ -407,6 +407,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sae-j1939"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f651599885b017bed45f8d18c755b8d47542b8fec581eba51c878104137764a4"
+
+[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -529,6 +535,7 @@ dependencies = [
  "heapless",
  "nb 1.0.0",
  "panic-probe",
+ "sae-j1939",
  "stm32l4xx-hal",
  "systick-monotonic",
  "wurth-calypso",
