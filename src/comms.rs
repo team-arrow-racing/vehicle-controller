@@ -94,7 +94,7 @@ pub mod msg {
         );
 
         // clear reset flags
-        csr.write(|w| {w.rmvf().set_bit()});
+        csr.write(|w| w.rmvf().set_bit());
 
         reset_flags
     }
