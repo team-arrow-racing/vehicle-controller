@@ -9,5 +9,5 @@ rustflags = [
 ]
 
 [build]
-# Cortex-M4 or Cortex-M7 (no FPU)
-target = "thumbv7em-none-eabi"
+# Cortex-M4 or Cortex-M7 (with FPU)
+target = "thumbv7em-none-eabihf"
