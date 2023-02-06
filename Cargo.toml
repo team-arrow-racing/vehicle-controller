@@ -27,7 +27,7 @@ git = "https://gitlab.com/team-arrow-racing/arrow-3/solar-car"
 # path = "../solar-car" # for local development
 
 [dependencies.sae-j1939]
-version = "0.1.0"
+version = "0.1.1"
 # path = "../sae-j1939" # for local development
 
 [dependencies.wurth-calypso]
