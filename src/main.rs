@@ -152,7 +152,7 @@ mod app {
         (
             Shared { can, horn },
             Local {
-                watchdog,
+            watchdog,
                 status_led,
             },
             init::Monotonics(mono),
