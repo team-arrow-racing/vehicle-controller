@@ -20,8 +20,7 @@ use systick_monotonic::{
 
 type Duration = MillisDurationU64;
 
-mod queued_can;
-use queued_can::QueuedCan;
+use solar_car::peripheral::queued_can::QueuedCan;
 
 use solar_car::device;
 
