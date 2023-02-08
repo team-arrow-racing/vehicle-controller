@@ -13,7 +13,7 @@ build:
       - target/
       - .cargo/
   script:
-    - rustup target add thumbv7em-none-eabi
+    - rustup target add thumbv7em-none-eabi thumbv7em-none-eabihf
     - cargo build
 
 lint:
@@ -25,7 +25,7 @@ lint:
       - target/
       - .cargo/
   script:
-    - rustup target add thumbv7em-none-eabi
+    - rustup target add thumbv7em-none-eabi thumbv7em-none-eabihf
     - rustup component add rustfmt
     - rustup component add clippy
     - cargo fmt --all -- --check
