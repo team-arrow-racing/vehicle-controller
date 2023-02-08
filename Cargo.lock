@@ -432,8 +432,8 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "solar-car"
-version = "0.1.0"
-source = "git+https://gitlab.com/team-arrow-racing/arrow-3/solar-car#1b856b8a0c2aec02ed45706ce614569924da7f37"
+version = "0.1.1"
+source = "git+https://gitlab.com/team-arrow-racing/arrow-3/solar-car#0a6071652b12f1b0bc16b6387f4b7c2321b76414"
 dependencies = [
  "bitflags",
  "bxcan",
