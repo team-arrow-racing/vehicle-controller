@@ -35,8 +35,11 @@ defmt-test = "0.3"
 
 [[bin]]
 name = "vehicle-controller"
-test = false
 bench = false
+
+[[test]]
+name = "integration"
+harness = false
 
 # cargo build/run
 [profile.dev]
