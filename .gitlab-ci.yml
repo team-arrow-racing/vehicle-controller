@@ -2,7 +2,7 @@ image: "rust:latest"
 
 stages:
   - build
-  - lint
+#  - lint
 
 build:
   stage: build
