@@ -21,6 +21,12 @@ The following will compile, flash and debug the program.
 DEFMT_LOG=info cargo run
 ```
 
+The following will run the integration tests.
+
+```shell
+cargo test --test integration
+```
+
 ## References
 
 - [Real-Time Interrupt-driven Concurrency Framework](https://rtic.rs/1/)
