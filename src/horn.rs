@@ -54,15 +54,12 @@ impl Horn {
 
     pub fn run(&mut self, time: Instant) {
         if self.state {
-            match self.start {
-                Some(start) => {
-                    if time.checked_duration_since(start).unwrap()
-                        > MAXIMUM_DURATION
-                    {
-                        self.stop();
-                    }
+            if let Some(start) = self.start {
+                if time.checked_duration_since(start).unwrap()
+                    > MAXIMUM_DURATION
+                {
+                    self.stop();
                 }
-                _ => {}
             }
         }
 
