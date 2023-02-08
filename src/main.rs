@@ -1,13 +1,13 @@
 //! Vehicle Controller
-//! 
+//!
 //! Main ECU for the solar car.
-//! 
+//!
 //! # Task priority assignment
-//! 
+//!
 //! It would be more idomatic to have these assigned in a enum or some constants
 //! but RTIC doesn't yet support variables (static or otherwise) in task
 //! definitions.
-//! 
+//!
 //! | Priority | Use |
 //! | --- | --- |
 //! | 0 | `idle` task and background tasks. |
