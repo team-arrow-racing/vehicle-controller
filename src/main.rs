@@ -176,6 +176,7 @@ mod app {
         cx.local.status_led.toggle();
 
         if cx.local.status_led.is_set_low() {
+            defmt::println!("heartbeat ❤️");
             cx.shared.can.lock(|can| {
                 can.transmit(com::heartbeat::message(DEVICE)).unwrap();
             });
