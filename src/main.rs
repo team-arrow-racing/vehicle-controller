@@ -173,22 +173,15 @@ mod app {
 
     #[task(priority = 2, shared = [can], local = [status_led])]
     fn heartbeat(mut cx: heartbeat::Context) {
+        cx.local.status_led.toggle();
+
         if cx.local.status_led.is_set_low() {
-            defmt::debug!("heartbeat!");
-
-            cx.local.status_led.set_high();
-
-            // send heartbeat message
             cx.shared.can.lock(|can| {
                 can.transmit(com::heartbeat::message(DEVICE)).unwrap();
             });
-
-            heartbeat::spawn_after(Duration::millis(100)).unwrap();
-        } else {
-            cx.local.status_led.set_low();
-
-            heartbeat::spawn_after(Duration::millis(900)).unwrap();
         }
+
+        heartbeat::spawn_after(Duration::millis(250)).unwrap();
     }
 
     #[task(priority = 1, shared = [horn], local = [horn_output])]
