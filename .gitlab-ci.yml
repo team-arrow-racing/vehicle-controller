@@ -25,6 +25,7 @@ format:
       - .cargo/
   script:
     - rustup target add thumbv7em-none-eabi thumbv7em-none-eabihf
+    - rustup component add rustfmt
     - cargo fmt --all
     - git add .
     - git diff-index --quiet HEAD || git commit -m "[ci] formatting with cargo fmt"
