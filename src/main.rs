@@ -171,6 +171,7 @@ mod app {
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
+    /// Live, laugh, love
     #[task(priority = 2, shared = [can], local = [status_led])]
     fn heartbeat(mut cx: heartbeat::Context) {
         cx.local.status_led.toggle();
@@ -184,6 +185,7 @@ mod app {
         heartbeat::spawn_after(Duration::millis(250)).unwrap();
     }
 
+    /// Beep beep!
     #[task(priority = 1, shared = [horn], local = [horn_output])]
     fn horn(mut cx: horn::Context) {
         defmt::debug!("horn!");
