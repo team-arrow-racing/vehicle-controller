@@ -30,14 +30,6 @@ git = "https://gitlab.com/team-arrow-racing/arrow-3/solar-car"
 version = "0.1.1"
 # path = "../sae-j1939" # for local development
 
-[dependencies.wurth-calypso]
-version = "0.1.0"
-# path = "../wurth-calypso" # for local development
-
-[dependencies.elmar-mppt]
-version = "0.1.0"
-# path = "../elmar-mppt" # for local development
-
 [dev-dependencies]
 defmt-test = "0.3"
 

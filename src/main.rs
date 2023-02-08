@@ -7,10 +7,8 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Interrupts};
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, PA10, PA9, PB13},
-    pac::USART1,
+    gpio::{Output, PushPull, PB13},
     prelude::*,
-    serial::{Config, Serial},
     watchdog::IndependentWatchdog,
 };
 use systick_monotonic::{
@@ -24,8 +22,6 @@ use solar_car::peripheral::queued_can::QueuedCan;
 
 use solar_car::device;
 
-use wurth_calypso::Calypso;
-
 static DEVICE: device::Device = device::Device::VehicleController;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
@@ -38,12 +34,6 @@ mod app {
     #[shared]
     struct Shared {
         can: QueuedCan,
-        calypso: Calypso<
-            Serial<
-                USART1,
-                (PA9<Alternate<PushPull, 7>>, PA10<Alternate<PushPull, 7>>),
-            >,
-        >,
     }
 
     #[local]
@@ -121,30 +111,6 @@ mod app {
             wd
         };
 
-        // configure calypso
-        let calypso = {
-            let tx = gpioa.pa9.into_alternate(
-                &mut gpioa.moder,
-                &mut gpioa.otyper,
-                &mut gpioa.afrh,
-            );
-            let rx = gpioa.pa10.into_alternate(
-                &mut gpioa.moder,
-                &mut gpioa.otyper,
-                &mut gpioa.afrh,
-            );
-
-            let serial = Serial::usart1(
-                cx.device.USART1,
-                (tx, rx),
-                Config::default().baudrate(921600.bps()).parity_even(),
-                clocks,
-                &mut rcc.apb2,
-            );
-
-            Calypso::new(serial)
-        };
-
         // start heartbeat
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
@@ -154,7 +120,7 @@ mod app {
         defmt::info!("finished init.");
 
         (
-            Shared { can, calypso },
+            Shared { can },
             Local {
                 watchdog,
                 status_led,
