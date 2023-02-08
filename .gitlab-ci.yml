@@ -26,6 +26,6 @@ format:
     - git config --global user.email "robot@example.com"
     - git config --global user.name "GitLab"
     - git diff-index --quiet HEAD || git commit -m "[ci] formatting with cargo fmt"
-    - git push
+    - git push -u origin main
   only:
     - main
