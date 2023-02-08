@@ -2,7 +2,6 @@ image: "rust:latest"
 
 stages:
   - build
-  - format
 
 build:
   stage: build
@@ -15,17 +14,3 @@ build:
   script:
     - rustup target add thumbv7em-none-eabi thumbv7em-none-eabihf
     - cargo build
-
-format:
-  stage: format
-  script:
-    - rustup target add thumbv7em-none-eabi thumbv7em-none-eabihf
-    - rustup component add rustfmt
-    - cargo fmt --all
-    - git add .
-    - git config --global user.email "robot@example.com"
-    - git config --global user.name "GitLab"
-    - git diff-index --quiet HEAD || git commit -m "[ci] formatting with cargo fmt"
-    - git push -u origin main
-  only:
-    - main
