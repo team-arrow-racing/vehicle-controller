@@ -43,7 +43,7 @@ use horn::Horn;
 
 static DEVICE: device::Device = device::Device::VehicleController;
 
-#[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
+#[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
     use super::*;
 
@@ -160,7 +160,7 @@ mod app {
         )
     }
 
-    #[task(shared = [can], local = [watchdog])]
+    #[task(priority = 1, shared = [can], local = [watchdog])]
     fn run(mut cx: run::Context) {
         cx.local.watchdog.feed();
 
@@ -171,7 +171,7 @@ mod app {
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
-    #[task(shared = [can], local = [status_led])]
+    #[task(priority = 2, shared = [can], local = [status_led])]
     fn heartbeat(mut cx: heartbeat::Context) {
         if cx.local.status_led.is_set_low() {
             defmt::debug!("heartbeat!");
@@ -191,7 +191,7 @@ mod app {
         }
     }
 
-    #[task(shared = [horn], local = [horn_output])]
+    #[task(priority = 1, shared = [horn], local = [horn_output])]
     fn horn(mut cx: horn::Context) {
         defmt::debug!("horn!");
         cx.shared.horn.lock(|horn| {
@@ -203,7 +203,7 @@ mod app {
     }
 
     /// Triggers on RX mailbox event.
-    #[task(shared = [can], binds = CAN1_RX0)]
+    #[task(priority = 2, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
         cx.shared.can.lock(|can| {
             can.try_receive().unwrap();
@@ -211,7 +211,7 @@ mod app {
     }
 
     /// Triggers on RX mailbox event.
-    #[task(shared = [can], binds = CAN1_RX1)]
+    #[task(priority = 2, shared = [can], binds = CAN1_RX1)]
     fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
         cx.shared.can.lock(|can| {
             can.try_receive().unwrap();
@@ -219,7 +219,7 @@ mod app {
     }
 
     /// triggers on TX mailbox empty.
-    #[task(shared = [can], binds = CAN1_TX)]
+    #[task(priority = 2, shared = [can], binds = CAN1_TX)]
     fn can_tx_empty(mut cx: can_tx_empty::Context) {
         cx.shared.can.lock(|can| {
             // try and send another message if there is one queued.
