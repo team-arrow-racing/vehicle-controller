@@ -7,6 +7,7 @@ use stm32l4xx_hal::{
     prelude::PinState,
 };
 use systick_monotonic::fugit::{MillisDurationU64, TimerInstantU64};
+use crate::app::monotonics::MonoTimer as monotonic;
 
 type Instant = TimerInstantU64<1000>;
 type Duration = MillisDurationU64;
@@ -31,12 +32,12 @@ impl Horn {
     }
 
     /// Start the horn.
-    pub fn start(&mut self, time: Instant) -> Result<(), &'static str> {
+    pub fn start(&mut self) -> Result<(), &'static str> {
         if !self.state {
             // do we actually want to start?
             match self.start {
                 None => {
-                    self.start = Some(time);
+                    self.start = Some(monotonic::now());
                     self.state = true;
                     Ok(())
                 }
@@ -53,7 +54,8 @@ impl Horn {
     }
 
     /// Run to update state.
-    pub fn run(&mut self, time: Instant) {
+    pub fn run(&mut self) {
+        let time = monotonic::now();
         if self.state {
             if let Some(start) = self.start {
                 if time.checked_duration_since(start).unwrap()

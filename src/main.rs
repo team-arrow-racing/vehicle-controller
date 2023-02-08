@@ -188,7 +188,7 @@ mod app {
     #[task(priority = 1, shared = [horn])]
     fn horn(mut cx: horn::Context) {
         cx.shared.horn.lock(|horn| {
-            horn.run(monotonics::now());
+            horn.run();
         });
 
         horn::spawn_after(Duration::millis(100)).unwrap();
