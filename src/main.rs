@@ -18,7 +18,7 @@ use systick_monotonic::{
 
 type Duration = MillisDurationU64;
 
-use solar_car::{device, peripheral::queued_can::QueuedCan};
+use solar_car::{com, device, peripheral::queued_can::QueuedCan};
 
 mod horn;
 mod lighting;
@@ -100,7 +100,7 @@ mod app {
             let mut can = QueuedCan::new(can);
 
             // broadcast startup message.
-            can.transmit(device::startup_msg(DEVICE)).unwrap();
+            can.transmit(com::startup::message(DEVICE)).unwrap();
 
             can
         };
@@ -163,7 +163,7 @@ mod app {
 
             // send heartbeat message
             cx.shared.can.lock(|can| {
-                can.transmit(device::heartbeat_msg(DEVICE)).unwrap();
+                can.transmit(com::heartbeat::message(DEVICE)).unwrap();
             });
 
             heartbeat::spawn_after(Duration::millis(100)).unwrap();
