@@ -7,7 +7,7 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Interrupts};
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Output, PushPull, PB13},
+    gpio::{Output, PinState, PushPull, PB12, PB13},
     prelude::*,
     watchdog::IndependentWatchdog,
 };
@@ -20,7 +20,9 @@ type Duration = MillisDurationU64;
 
 use solar_car::{device, peripheral::queued_can::QueuedCan};
 
+mod horn;
 mod lighting;
+use horn::Horn;
 
 static DEVICE: device::Device = device::Device::VehicleController;
 
@@ -34,12 +36,14 @@ mod app {
     #[shared]
     struct Shared {
         can: QueuedCan,
+        horn: Horn,
     }
 
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB13<Output<PushPull>>,
+        horn_output: PB12<Output<PushPull>>, // TODO: temporary pinout
     }
 
     #[init]
@@ -95,12 +99,11 @@ mod app {
 
             let mut can = QueuedCan::new(can);
 
+            // broadcast startup message.
             can.transmit(device::startup_msg(DEVICE)).unwrap();
 
             can
         };
-
-        // broadcast startup message.
 
         // configure watchdog
         let watchdog = {
@@ -111,6 +114,13 @@ mod app {
             wd
         };
 
+        // configure horn
+        let horn_output = gpiob
+            .pb12
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+
+        let horn = Horn::new();
+
         // start heartbeat
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
@@ -120,21 +130,27 @@ mod app {
         defmt::info!("finished init.");
 
         (
-            Shared { can },
+            Shared { can, horn },
             Local {
                 watchdog,
                 status_led,
+                horn_output,
             },
             init::Monotonics(mono),
         )
     }
 
-    #[task(shared = [can], local = [watchdog])]
+    #[task(shared = [can, horn], local = [watchdog, horn_output])]
     fn run(mut cx: run::Context) {
         cx.local.watchdog.feed();
 
         cx.shared.can.lock(|can| {
             can.try_transmit();
+        });
+
+        cx.shared.horn.lock(|horn| {
+            let state = horn.eval(monotonics::now());
+            cx.local.horn_output.set_state(PinState::from(state));
         });
 
         run::spawn_after(Duration::millis(10)).unwrap();
