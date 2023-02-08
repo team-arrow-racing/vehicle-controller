@@ -4,11 +4,13 @@ Responstivle for controlling the main function of the vehicle.
 
 ## Setup
 
+Install dependencies
+
 ```shell
+# Install tools
+cargo install probe-run
 # Add cross-compilation target
 rustup target add thumbv7em-none-eabihf
-# Install probe-run
-cargo install probe-run
 ```
 
 On Linux you may need to configure your udev rules to allow running without root.
