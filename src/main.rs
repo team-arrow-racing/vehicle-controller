@@ -18,9 +18,7 @@ use systick_monotonic::{
 
 type Duration = MillisDurationU64;
 
-use solar_car::peripheral::queued_can::QueuedCan;
-
-use solar_car::device;
+use solar_car::{device, peripheral::queued_can::QueuedCan};
 
 static DEVICE: device::Device = device::Device::VehicleController;
 
