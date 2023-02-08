@@ -28,6 +28,8 @@ format:
     - rustup component add rustfmt
     - cargo fmt --all
     - git add .
+    - git config --global user.email "robot@example.com"
+    - git config --global user.name "GitLab"
     - git diff-index --quiet HEAD || git commit -m "[ci] formatting with cargo fmt"
   only:
     - main
