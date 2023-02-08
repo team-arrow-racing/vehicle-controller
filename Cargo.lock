@@ -438,6 +438,7 @@ dependencies = [
  "bitflags",
  "bxcan",
  "defmt",
+ "heapless",
  "sae-j1939",
  "stm32l4xx-hal",
 ]
