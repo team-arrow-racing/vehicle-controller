@@ -121,8 +121,11 @@ mod app {
 
         let horn = Horn::new();
 
-        // start heartbeat
+        // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
+
+        // start horn task
+        horn::spawn_after(Duration::millis(100)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -140,17 +143,12 @@ mod app {
         )
     }
 
-    #[task(shared = [can, horn], local = [watchdog, horn_output])]
+    #[task(shared = [can], local = [watchdog])]
     fn run(mut cx: run::Context) {
         cx.local.watchdog.feed();
 
         cx.shared.can.lock(|can| {
             can.try_transmit();
-        });
-
-        cx.shared.horn.lock(|horn| {
-            let state = horn.eval(monotonics::now());
-            cx.local.horn_output.set_state(PinState::from(state));
         });
 
         run::spawn_after(Duration::millis(10)).unwrap();
@@ -174,6 +172,17 @@ mod app {
 
             heartbeat::spawn_after(Duration::millis(900)).unwrap();
         }
+    }
+
+    #[task(shared = [horn], local = [horn_output])]
+    fn horn(mut cx: horn::Context) {
+        defmt::debug!("horn!");
+        cx.shared.horn.lock(|horn| {
+            let state = horn.eval(monotonics::now());
+            cx.local.horn_output.set_state(PinState::from(state));
+        });
+
+        horn::spawn_after(Duration::millis(100)).unwrap();
     }
 
     /// Triggers on RX mailbox event.
