@@ -187,7 +187,6 @@ mod app {
     /// Beep beep!
     #[task(priority = 1, shared = [horn])]
     fn horn(mut cx: horn::Context) {
-        defmt::debug!("horn!");
         cx.shared.horn.lock(|horn| {
             horn.run(monotonics::now());
         });
