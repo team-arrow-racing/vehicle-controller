@@ -52,6 +52,7 @@ impl Horn {
         self.state = false;
     }
 
+    /// Run to update state.
     pub fn run(&mut self, time: Instant) {
         if self.state {
             if let Some(start) = self.start {
