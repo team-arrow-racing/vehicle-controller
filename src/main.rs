@@ -212,7 +212,7 @@ mod app {
 
     #[idle]
     fn idle(_: idle::Context) -> ! {
-        defmt::trace!("idling.");
+        defmt::debug!("idling.");
         loop {
             cortex_m::asm::nop();
         }
