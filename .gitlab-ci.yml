@@ -2,7 +2,7 @@ image: "rust:latest"
 
 stages:
   - build
-  - lint
+  - format
 
 build:
   stage: build
@@ -16,17 +16,17 @@ build:
     - rustup target add thumbv7em-none-eabi thumbv7em-none-eabihf
     - cargo build
 
-lint:
-  stage: lint
-  image: rust:latest
+format:
+  stage: format
   cache:
-    key: "$CI_COMMIT_REF_SLUG-lint"
+    key: "$CI_COMMIT_REF_SLUG-format"
     paths:
       - target/
       - .cargo/
   script:
     - rustup target add thumbv7em-none-eabi thumbv7em-none-eabihf
-    - rustup component add rustfmt
-    - rustup component add clippy
-    - cargo fmt --all -- --check
-    - cargo clippy
+    - cargo fmt --all
+    - git add .
+    - git diff-index --quiet HEAD || git commit -m "[ci] formatting with cargo fmt"
+  only:
+    - main
