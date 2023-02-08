@@ -20,6 +20,8 @@ type Duration = MillisDurationU64;
 
 use solar_car::{device, peripheral::queued_can::QueuedCan};
 
+mod lighting;
+
 static DEVICE: device::Device = device::Device::VehicleController;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1])]
