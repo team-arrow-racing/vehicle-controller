@@ -1,3 +1,7 @@
+//! Vehicle Controller
+//! 
+//! Main ECU for the solar car.
+
 #![no_main]
 #![no_std]
 
