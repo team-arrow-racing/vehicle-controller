@@ -37,12 +37,13 @@ impl QueuedCan {
         }
     }
 
-    pub fn try_transmit(&mut self) {
+    pub fn try_transmit(&mut self) -> Result<(), &'static str> {
         match self.tx_queue.dequeue() {
             Some(f) => {
-                self.can.transmit(&f).unwrap();
-            }
-            None => {}
+                self.can.transmit(&f);
+                Ok(())
+            },
+            None => Ok(())
         }
     }
 
