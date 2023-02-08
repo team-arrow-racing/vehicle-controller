@@ -6,7 +6,7 @@ Responstivle for controlling the main function of the vehicle.
 
 ```shell
 # Add cross-compilation target
-rustup target add thumbv7em-none-eabi
+rustup target add thumbv7em-none-eabihf
 # Install probe-run
 cargo install probe-run
 ```
