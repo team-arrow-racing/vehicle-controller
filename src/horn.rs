@@ -2,23 +2,31 @@
 
 #![allow(dead_code)]
 
+use stm32l4xx_hal::{
+    gpio::{ErasedPin, Output, PushPull},
+    prelude::PinState,
+};
 use systick_monotonic::fugit::{MillisDurationU64, TimerInstantU64};
 
 type Instant = TimerInstantU64<1000>;
 type Duration = MillisDurationU64;
 
+type OutputPin = ErasedPin<Output<PushPull>>;
+
 pub struct Horn {
     state: bool,
     start: Option<Instant>,
+    pin: OutputPin,
 }
 
 static MAXIMUM_DURATION: Duration = Duration::millis(2000);
 
 impl Horn {
-    pub fn new() -> Self {
+    pub fn new(pin: OutputPin) -> Self {
         Horn {
             state: false,
             start: Some(Instant::from_ticks(0)),
+            pin,
         }
     }
 
@@ -44,7 +52,7 @@ impl Horn {
         self.state = false;
     }
 
-    pub fn eval(&mut self, time: Instant) -> bool {
+    pub fn run(&mut self, time: Instant) {
         if self.state {
             match self.start {
                 Some(start) => {
@@ -58,6 +66,6 @@ impl Horn {
             }
         }
 
-        self.state
+        self.pin.set_state(PinState::from(self.state));
     }
 }

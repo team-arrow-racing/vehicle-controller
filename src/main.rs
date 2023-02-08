@@ -24,7 +24,7 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Interrupts};
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Output, PinState, PushPull, PB12, PB13},
+    gpio::{Output, PushPull, PB13},
     prelude::*,
     watchdog::IndependentWatchdog,
 };
@@ -60,7 +60,6 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB13<Output<PushPull>>,
-        horn_output: PB12<Output<PushPull>>, // TODO: temporary pinout
     }
 
     #[init]
@@ -134,9 +133,10 @@ mod app {
         // configure horn
         let horn_output = gpiob
             .pb12
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
 
-        let horn = Horn::new();
+        let horn = Horn::new(horn_output);
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
@@ -154,7 +154,6 @@ mod app {
             Local {
                 watchdog,
                 status_led,
-                horn_output,
             },
             init::Monotonics(mono),
         )
@@ -186,12 +185,11 @@ mod app {
     }
 
     /// Beep beep!
-    #[task(priority = 1, shared = [horn], local = [horn_output])]
+    #[task(priority = 1, shared = [horn])]
     fn horn(mut cx: horn::Context) {
         defmt::debug!("horn!");
         cx.shared.horn.lock(|horn| {
-            let state = horn.eval(monotonics::now());
-            cx.local.horn_output.set_state(PinState::from(state));
+            horn.run(monotonics::now());
         });
 
         horn::spawn_after(Duration::millis(100)).unwrap();
