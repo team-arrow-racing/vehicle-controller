@@ -164,7 +164,7 @@ mod app {
         cx.local.watchdog.feed();
 
         cx.shared.can.lock(|can| {
-            can.try_transmit();
+            can.try_transmit().unwrap();
         });
 
         run::spawn_after(Duration::millis(10)).unwrap();
@@ -215,7 +215,7 @@ mod app {
     fn can_tx_empty(mut cx: can_tx_empty::Context) {
         cx.shared.can.lock(|can| {
             // try and send another message if there is one queued.
-            can.try_transmit();
+            can.try_transmit().unwrap();
         });
     }
 
