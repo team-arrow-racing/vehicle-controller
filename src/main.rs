@@ -181,7 +181,7 @@ mod app {
             });
         }
 
-        heartbeat::spawn_after(Duration::millis(250)).unwrap();
+        heartbeat::spawn_after(Duration::millis(500)).unwrap();
     }
 
     /// Beep beep!
