@@ -2,12 +2,12 @@
 
 #![allow(dead_code)]
 
+use crate::app::monotonics::MonoTimer as monotonic;
 use stm32l4xx_hal::{
     gpio::{ErasedPin, Output, PushPull},
     prelude::PinState,
 };
 use systick_monotonic::fugit::{MillisDurationU64, TimerInstantU64};
-use crate::app::monotonics::MonoTimer as monotonic;
 
 type Instant = TimerInstantU64<1000>;
 type Duration = MillisDurationU64;
