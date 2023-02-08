@@ -1,3 +1,7 @@
+//! Vehicle lighting as per BWSC2023 2.24
+
+#![allow(dead_code)]
+
 use bitflags::bitflags;
 
 bitflags! {
@@ -15,4 +19,3 @@ bitflags! {
         const STOP = (0 << 3);
     }
 }
-
