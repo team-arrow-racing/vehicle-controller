@@ -6,7 +6,6 @@ rustflags = [
   "-C", "link-arg=--nmagic",
   "-C", "link-arg=-Tlink.x",
   "-C", "link-arg=-Tdefmt.x",
-  "-C", "linker=flip-link", # stack overflow protection
 ]
 
 [build]
