@@ -24,7 +24,7 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Interrupts};
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Output, PushPull, PB13},
+    gpio::{Output, PushPull, PB3},
     prelude::*,
     watchdog::IndependentWatchdog,
 };
@@ -59,7 +59,7 @@ mod app {
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
-        status_led: PB13<Output<PushPull>>,
+        status_led: PB3<Output<PushPull>>,
     }
 
     #[init]
@@ -81,7 +81,7 @@ mod app {
 
         // configure status led
         let status_led = gpiob
-            .pb13
+            .pb3
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
         // configure can bus
