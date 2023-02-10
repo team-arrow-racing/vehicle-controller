@@ -11,7 +11,7 @@
             "servertype": "openocd",
             "gdbTarget": ":3333",
             "runToEntryPoint": "main",
-            "executable": "./target/thumbv7em-none-eabi/debug/vehicle-controller",
+            "executable": "./target/thumbv7em-none-eabihf/debug/vehicle-controller",
             "svdFile": "STM32L4x3.svd",
             // you may need to change this to match your system.
             "gdbPath": "arm-none-eabi-gdb", // e.g. `gdb` or `multiarch-gdb`
