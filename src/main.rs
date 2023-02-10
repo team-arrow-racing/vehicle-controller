@@ -164,7 +164,9 @@ mod app {
         cx.local.watchdog.feed();
 
         cx.shared.can.lock(|can| {
-            can.try_transmit().unwrap();
+            if let Err(e) = can.try_transmit() {
+                defmt::error!("{}", e);
+            }
         });
 
         run::spawn_after(Duration::millis(10)).unwrap();
@@ -199,7 +201,9 @@ mod app {
     #[task(priority = 2, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
         cx.shared.can.lock(|can| {
-            can.try_receive().unwrap();
+            if let Err(e) = can.try_receive() {
+                defmt::error!("{}", e)
+            }
         });
     }
 
@@ -207,7 +211,9 @@ mod app {
     #[task(priority = 2, shared = [can], binds = CAN1_RX1)]
     fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
         cx.shared.can.lock(|can| {
-            can.try_receive().unwrap();
+            if let Err(e) = can.try_receive() {
+                defmt::error!("{}", e)
+            }
         });
     }
 
@@ -216,7 +222,9 @@ mod app {
     fn can_tx_empty(mut cx: can_tx_empty::Context) {
         cx.shared.can.lock(|can| {
             // try and send another message if there is one queued.
-            can.try_transmit().unwrap();
+            if let Err(e) = can.try_transmit() {
+                defmt::error!("{}", e)
+            }
         });
     }
 
