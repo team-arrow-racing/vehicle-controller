@@ -261,4 +261,6 @@ fn panic() -> ! {
 
 // Show a millisecond timestamp next to debug output.
 // Unit conversion isn't required because ticks = milliseconds for our case.
-defmt::timestamp!("time={=u64}ms", { app::monotonics::MonoTimer::now().ticks() });
+defmt::timestamp!("time={=u64}ms", {
+    app::monotonics::MonoTimer::now().ticks()
+});
