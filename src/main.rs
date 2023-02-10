@@ -24,9 +24,10 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Interrupts};
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Output, PushPull, PB13},
+    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
     prelude::*,
     watchdog::IndependentWatchdog,
+    pac::CAN1,
 };
 use systick_monotonic::{
     fugit::{MillisDurationU32, MillisDurationU64},
@@ -35,7 +36,7 @@ use systick_monotonic::{
 
 type Duration = MillisDurationU64;
 
-use solar_car::{com, device, peripheral::queued_can::QueuedCan};
+use solar_car::{com, device};
 
 mod horn;
 mod lighting;
@@ -52,7 +53,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        can: QueuedCan,
+        can: bxcan::Can<Can<CAN1, (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>)>>,
         horn: Horn,
     }
 
@@ -113,10 +114,8 @@ mod app {
             );
             nb::block!(can.enable_non_blocking()).unwrap();
 
-            let mut can = QueuedCan::new(can);
-
             // broadcast startup message.
-            can.transmit(com::startup::message(DEVICE)).unwrap();
+            can.transmit(&com::startup::message(DEVICE)).unwrap();
 
             can
         };
@@ -159,28 +158,22 @@ mod app {
         )
     }
 
-    #[task(priority = 1, shared = [can], local = [watchdog])]
-    fn run(mut cx: run::Context) {
+    #[task(priority = 1, local = [watchdog])]
+    fn run(cx: run::Context) {
         cx.local.watchdog.feed();
-
-        cx.shared.can.lock(|can| {
-            if let Err(e) = can.try_transmit() {
-                defmt::error!("{}", e);
-            }
-        });
 
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
     /// Live, laugh, love
-    #[task(priority = 2, shared = [can], local = [status_led])]
+    #[task(priority = 1, shared = [can], local = [status_led])]
     fn heartbeat(mut cx: heartbeat::Context) {
         cx.local.status_led.toggle();
 
         if cx.local.status_led.is_set_low() {
             defmt::println!("heartbeat ❤️");
             cx.shared.can.lock(|can| {
-                can.transmit(com::heartbeat::message(DEVICE)).unwrap();
+                can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
             });
         }
 
@@ -198,32 +191,26 @@ mod app {
     }
 
     /// Triggers on RX mailbox event.
-    #[task(priority = 2, shared = [can], binds = CAN1_RX0)]
-    fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
-        cx.shared.can.lock(|can| {
-            if let Err(e) = can.try_receive() {
-                defmt::error!("{}", e)
-            }
-        });
+    #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
+    fn can_rx0_pending(_: can_rx0_pending::Context) {
+        can_receive::spawn().unwrap();
     }
 
     /// Triggers on RX mailbox event.
-    #[task(priority = 2, shared = [can], binds = CAN1_RX1)]
-    fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
-        cx.shared.can.lock(|can| {
-            if let Err(e) = can.try_receive() {
-                defmt::error!("{}", e)
-            }
-        });
+    #[task(priority = 1, shared = [can], binds = CAN1_RX1)]
+    fn can_rx1_pending(_: can_rx1_pending::Context) {
+        can_receive::spawn().unwrap();
     }
 
-    /// triggers on TX mailbox empty.
-    #[task(priority = 2, shared = [can], binds = CAN1_TX)]
-    fn can_tx_empty(mut cx: can_tx_empty::Context) {
+    #[task(priority = 2, shared = [can])]
+    fn can_receive(mut cx: can_receive::Context) {
         cx.shared.can.lock(|can| {
-            // try and send another message if there is one queued.
-            if let Err(e) = can.try_transmit() {
-                defmt::error!("{}", e)
+            match can.receive() {
+                Ok(frame) => {
+                    // TODO: process our can frames
+                    let _ = frame;
+                },
+                Err(_) => { defmt::error!("can receive buffer overrun") },
             }
         });
     }
