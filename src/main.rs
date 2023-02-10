@@ -65,7 +65,7 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
-        defmt::info!("starting init.");
+        defmt::trace!("task: init");
 
         // peripherals
         let mut flash = cx.device.FLASH.constrain();
@@ -146,8 +146,6 @@ mod app {
         // start main loop
         run::spawn().unwrap();
 
-        defmt::info!("finished init.");
-
         (
             Shared { can, horn },
             Local {
@@ -160,6 +158,8 @@ mod app {
 
     #[task(priority = 1, local = [watchdog])]
     fn run(cx: run::Context) {
+        defmt::trace!("task: run");
+        
         cx.local.watchdog.feed();
 
         run::spawn_after(Duration::millis(10)).unwrap();
@@ -168,10 +168,11 @@ mod app {
     /// Live, laugh, love
     #[task(priority = 1, shared = [can], local = [status_led])]
     fn heartbeat(mut cx: heartbeat::Context) {
+        defmt::trace!("task: heartbeat");
+
         cx.local.status_led.toggle();
 
         if cx.local.status_led.is_set_low() {
-            defmt::println!("heartbeat ❤️");
             cx.shared.can.lock(|can| {
                 can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
             });
@@ -183,6 +184,8 @@ mod app {
     /// Beep beep!
     #[task(priority = 1, shared = [horn])]
     fn horn(mut cx: horn::Context) {
+        defmt::trace!("task: horn");
+
         cx.shared.horn.lock(|horn| {
             horn.run();
         });
@@ -193,17 +196,23 @@ mod app {
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(_: can_rx0_pending::Context) {
+        defmt::println!("task: can rx0 pending");
+
         can_receive::spawn().unwrap();
     }
 
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX1)]
     fn can_rx1_pending(_: can_rx1_pending::Context) {
+        defmt::println!("task: can rx1 pending");
+
         can_receive::spawn().unwrap();
     }
 
     #[task(priority = 2, shared = [can])]
     fn can_receive(mut cx: can_receive::Context) {
+        defmt::println!("task: can receive");
+
         cx.shared.can.lock(|can| {
             match can.receive() {
                 Ok(frame) => {
@@ -217,7 +226,8 @@ mod app {
 
     #[idle]
     fn idle(_: idle::Context) -> ! {
-        defmt::debug!("idling.");
+        defmt::trace!("task: idle");
+
         loop {
             cortex_m::asm::nop();
         }
