@@ -205,7 +205,7 @@ mod app {
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(_: can_rx0_pending::Context) {
-        defmt::println!("task: can rx0 pending");
+        defmt::trace!("task: can rx0 pending");
 
         can_receive::spawn().unwrap();
     }
@@ -213,14 +213,13 @@ mod app {
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX1)]
     fn can_rx1_pending(_: can_rx1_pending::Context) {
-        defmt::println!("task: can rx1 pending");
+        defmt::trace!("task: can rx1 pending");
 
         can_receive::spawn().unwrap();
     }
 
     #[task(priority = 2, shared = [can])]
     fn can_receive(mut cx: can_receive::Context) {
-        defmt::println!("task: can receive");
 
         cx.shared.can.lock(|can| {
             match can.receive() {
@@ -231,6 +230,7 @@ mod app {
                 Err(_) => {
                     defmt::error!("can receive buffer overrun")
                 }
+        defmt::trace!("task: can receive");
             }
         });
     }
