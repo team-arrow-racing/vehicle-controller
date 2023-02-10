@@ -220,17 +220,24 @@ mod app {
 
     #[task(priority = 2, shared = [can])]
     fn can_receive(mut cx: can_receive::Context) {
-
-        cx.shared.can.lock(|can| {
-            match can.receive() {
-                Ok(frame) => {
-                    // TODO: process our can frames
-                    let _ = frame;
-                }
-                Err(_) => {
-                    defmt::error!("can receive buffer overrun")
-                }
         defmt::trace!("task: can receive");
+
+        cx.shared.can.lock(|can| match can.receive() {
+            Ok(frame) => {
+                let id = match frame.id() {
+                    bxcan::Id::Extended(id) => id.as_raw(),
+                    bxcan::Id::Standard(id) => id.as_raw() as u32,
+                };
+
+                defmt::println!(
+                    "new frame: id={=u32:#x} length={=u8} data={=[u8]}",
+                    id,
+                    frame.dlc(),
+                    frame.data().unwrap()
+                );
+            }
+            Err(_) => {
+                defmt::error!("can receive buffer overrun")
             }
         });
     }
