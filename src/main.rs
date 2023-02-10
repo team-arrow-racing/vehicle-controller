@@ -25,9 +25,9 @@ use bxcan::{filter::Mask32, Interrupts};
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
+    pac::CAN1,
     prelude::*,
     watchdog::IndependentWatchdog,
-    pac::CAN1,
 };
 use systick_monotonic::{
     fugit::{MillisDurationU32, MillisDurationU64},
@@ -53,7 +53,12 @@ mod app {
 
     #[shared]
     struct Shared {
-        can: bxcan::Can<Can<CAN1, (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>)>>,
+        can: bxcan::Can<
+            Can<
+                CAN1,
+                (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>),
+            >,
+        >,
         horn: Horn,
     }
 
@@ -106,7 +111,11 @@ mod app {
             .set_bit_timing(0x001c_0009); // 500kbit/s
 
             let mut can = can.enable();
+
+            // configure filters
             can.modify_filters().enable_bank(0, Mask32::accept_all());
+
+            // configure interrupts
             can.enable_interrupts(
                 Interrupts::TRANSMIT_MAILBOX_EMPTY
                     | Interrupts::FIFO0_MESSAGE_PENDING
@@ -149,7 +158,7 @@ mod app {
         (
             Shared { can, horn },
             Local {
-            watchdog,
+                watchdog,
                 status_led,
             },
             init::Monotonics(mono),
@@ -159,7 +168,7 @@ mod app {
     #[task(priority = 1, local = [watchdog])]
     fn run(cx: run::Context) {
         defmt::trace!("task: run");
-        
+
         cx.local.watchdog.feed();
 
         run::spawn_after(Duration::millis(10)).unwrap();
@@ -218,8 +227,10 @@ mod app {
                 Ok(frame) => {
                     // TODO: process our can frames
                     let _ = frame;
-                },
-                Err(_) => { defmt::error!("can receive buffer overrun") },
+                }
+                Err(_) => {
+                    defmt::error!("can receive buffer overrun")
+                }
             }
         });
     }
