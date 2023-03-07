@@ -23,8 +23,6 @@ bitflags! {
     }
 }
 
-type OutputPin = ErasedPin<Output<PushPull>>;
-
 pub struct Lamps {
     state: LampsState,
     on_cycle: bool,
