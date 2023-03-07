@@ -31,6 +31,7 @@ pub struct Lamps {
 }
 
 impl Lamps {
+    /// Creat a new state machine instance
     pub fn new() -> Self {
         Self {
             state: LampsState {
@@ -40,26 +41,37 @@ impl Lamps {
         }
     }
 
+    /// Set left indicator state
     pub fn set_left_indicator(&mut self, state: bool) {
         self.state.set(LampsState::INDICATOR_LEFT, state);
     }
 
+    /// Set right indicator state
     pub fn set_right_indicator(&mut self, state: bool) {
         self.state.set(LampsState::INDICATOR_RIGHT, state);
     }
 
+    /// Set hazard lights state
     pub fn set_hazards(&mut self, state: bool) {
         self.state.set(LampsState::HAZARD, state);
     }
 
+    /// Set the daytime running lights state
     pub fn set_daytime(&mut self, state: bool) {
         self.state.set(LampsState::DAYTIME, state);
     }
 
+    /// Set the stop light state
     pub fn set_stop(&mut self, state: bool) {
         self.state.set(LampsState::STOP, state);
     }
 
+    /// Turn all of the lights off
+    pub fn all_off(&mut self) {
+        self.state = LampsState::empty();
+    }
+
+    /// Runner that must be called regularly to keep hardware up to date
     pub fn run(&mut self) -> LampsState {
         let time = monotonic::now();
 
