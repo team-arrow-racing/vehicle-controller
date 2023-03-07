@@ -4,22 +4,21 @@
 
 use crate::app::monotonics::MonoTimer as monotonic;
 use bitflags::bitflags;
-use stm32l4xx_hal::gpio::{ErasedPin, Output, PushPull};
 
 bitflags! {
     /// As per
     #[derive(Default)]
     pub struct LampsState: u8 {
         // indicator lamps
-        const INDICATOR_LEFT = (1 << 0);
-        const INDICATOR_RIGHT = (1 << 1);
+        const INDICATOR_LEFT = 1 << 0;
+        const INDICATOR_RIGHT = 1 << 1;
         const HAZARD = Self::INDICATOR_LEFT.bits | Self::INDICATOR_RIGHT.bits;
 
         // daytime lamps
-        const DAYTIME = (1 << 2);
+        const DAYTIME = 1 << 2;
 
         // stop lamps
-        const STOP = (1 << 3);
+        const STOP = 1 << 3;
     }
 }
 
