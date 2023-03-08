@@ -38,6 +38,8 @@ type Duration = MillisDurationU64;
 
 use solar_car::{com, device};
 
+use elmar_mppt::{Mppt, ID_BASE, ID_INC};
+
 mod horn;
 mod lighting;
 use horn::Horn;
@@ -60,6 +62,8 @@ mod app {
             >,
         >,
         horn: Horn,
+        mppt_a: Mppt,
+        mppt_b: Mppt,
     }
 
     #[local]
@@ -138,6 +142,9 @@ mod app {
             wd
         };
 
+        let mppt_a = Mppt::new(ID_BASE);
+        let mppt_b = Mppt::new(ID_BASE + ID_INC);
+
         // configure horn
         let horn_output = gpiob
             .pb12
@@ -156,13 +163,54 @@ mod app {
         run::spawn().unwrap();
 
         (
-            Shared { can, horn },
+            Shared {
+                can,
+                horn,
+                mppt_a,
+                mppt_b,
+            },
             Local {
                 watchdog,
                 status_led,
             },
             init::Monotonics(mono),
         )
+    }
+
+    #[task(shared = [can, mppt_a, mppt_b])]
+    fn init_mppts(mut cx: init_mppts::Context) {
+        defmt::debug!("task: init_mppts");
+
+        const MAX_VOLTAGE: f32 = 60.0;
+        const MAX_CURRENT: f32 = 7.0;
+
+        cx.shared.can.lock(|can| {
+            cx.shared.mppt_a.lock(|mppt| {
+                nb::block!(can.transmit(&mppt.set_mode(elmar_mppt::Mode::On)))
+                    .unwrap();
+                nb::block!(
+                    can.transmit(&mppt.set_maximum_output_voltage(MAX_VOLTAGE))
+                )
+                .unwrap();
+                nb::block!(
+                    can.transmit(&mppt.set_maximum_input_current(MAX_CURRENT))
+                )
+                .unwrap();
+            });
+
+            cx.shared.mppt_b.lock(|mppt| {
+                nb::block!(can.transmit(&mppt.set_mode(elmar_mppt::Mode::On)))
+                    .unwrap();
+                nb::block!(
+                    can.transmit(&mppt.set_maximum_output_voltage(MAX_VOLTAGE))
+                )
+                .unwrap();
+                nb::block!(
+                    can.transmit(&mppt.set_maximum_input_current(MAX_CURRENT))
+                )
+                .unwrap();
+            });
+        });
     }
 
     #[task(priority = 1, local = [watchdog])]
