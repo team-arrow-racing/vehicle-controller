@@ -1,6 +1,6 @@
 # Vehicle Controller
 
-Responstivle for controlling the main function of the vehicle.
+Responsible for controlling the main function of the vehicle.
 
 ## Setup
 
