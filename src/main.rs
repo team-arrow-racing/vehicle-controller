@@ -34,6 +34,8 @@ use stm32l4xx_hal::{
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
 use solar_car::{com, device};
 mod horn;
+mod state;
+use state::State;
 mod lighting;
 use horn::Horn;
 use prohelion::wavesculptor::WaveSculptor;
@@ -64,6 +66,7 @@ mod app {
         mppt_a: Mppt,
         mppt_b: Mppt,
         ws22: WaveSculptor,
+        state: State,
     }
 
     #[local]
@@ -160,6 +163,8 @@ mod app {
 
         let horn = Horn::new(horn_output);
 
+        let state = State::new();
+
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
@@ -176,6 +181,7 @@ mod app {
                 mppt_a,
                 mppt_b,
                 ws22,
+                state,
             },
             Local {
                 watchdog,
