@@ -22,6 +22,7 @@ use defmt_rtt as _;
 use panic_probe as _;
 
 use bxcan::{filter::Mask32, Interrupts};
+use dwt_systick_monotonic::{fugit, DwtSystick};
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
@@ -29,15 +30,9 @@ use stm32l4xx_hal::{
     prelude::*,
     watchdog::IndependentWatchdog,
 };
-use dwt_systick_monotonic::{
-    fugit,
-    DwtSystick,
-};
-
-use solar_car::{com, device};
 
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
-
+use solar_car::{com, device};
 mod horn;
 mod lighting;
 use horn::Horn;
