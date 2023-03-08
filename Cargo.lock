@@ -72,6 +72,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfg-if"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
 name = "cortex-m"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -198,6 +204,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "dwt-systick-monotonic"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89cf807194f1cdf91fc6982bbf42dae58bef937206fd68091d6534ba2888c0cf"
+dependencies = [
+ "cfg-if",
+ "cortex-m",
+ "fugit",
+ "rtic-monotonic",
 ]
 
 [[package]]
@@ -512,17 +530,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "systick-monotonic"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67fb822d5c615a0ae3a4795ee5b1d06381c7faf488d861c0a4fa8e6a88d5ff84"
-dependencies = [
- "cortex-m",
- "fugit",
- "rtic-monotonic",
-]
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -546,6 +553,7 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "defmt-test",
+ "dwt-systick-monotonic",
  "elmar-mppt",
  "embedded-hal",
  "heapless",
@@ -554,7 +562,6 @@ dependencies = [
  "sae-j1939",
  "solar-car",
  "stm32l4xx-hal",
- "systick-monotonic",
 ]
 
 [[package]]

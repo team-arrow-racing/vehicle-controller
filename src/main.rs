@@ -29,12 +29,10 @@ use stm32l4xx_hal::{
     prelude::*,
     watchdog::IndependentWatchdog,
 };
-use systick_monotonic::{
-    fugit::{MillisDurationU32, MillisDurationU64},
-    Systick,
+use dwt_systick_monotonic::{
+    fugit,
+    DwtSystick,
 };
-
-type Duration = MillisDurationU64;
 
 use solar_car::{com, device};
 
@@ -45,6 +43,7 @@ mod lighting;
 use horn::Horn;
 
 static DEVICE: device::Device = device::Device::VehicleController;
+const SYSCLK: u32 = 80_000_000;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
@@ -53,7 +52,9 @@ mod app {
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
-    type MonoTimer = Systick<1000>;
+    type MonoTimer = DwtSystick<SYSCLK>;
+    pub type Duration = fugit::TimerDuration<u64, SYSCLK>;
+    pub type Instant = fugit::TimerInstant<u64, SYSCLK>;
 
     #[shared]
     struct Shared {
@@ -75,7 +76,7 @@ mod app {
     }
 
     #[init]
-    fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
+    fn init(mut cx: init::Context) -> (Shared, Local, init::Monotonics) {
         defmt::trace!("task: init");
 
         // peripherals
@@ -89,7 +90,12 @@ mod app {
         let clocks = rcc.cfgr.sysclk(80.MHz()).freeze(&mut flash.acr, &mut pwr);
 
         // configure monotonic time
-        let mono = Systick::new(cx.core.SYST, clocks.sysclk().to_Hz());
+        let mono = DwtSystick::new(
+            &mut cx.core.DCB,
+            cx.core.DWT,
+            cx.core.SYST,
+            clocks.sysclk().to_Hz(),
+        );
 
         // configure status led
         let status_led = gpiob
@@ -139,7 +145,7 @@ mod app {
         let watchdog = {
             let mut wd = IndependentWatchdog::new(cx.device.IWDG);
             wd.stop_on_debug(&cx.device.DBGMCU, true);
-            wd.start(MillisDurationU32::millis(100));
+            wd.start(fugit::MillisDurationU32::millis(100));
 
             wd
         };
@@ -318,5 +324,7 @@ fn panic() -> ! {
 // Show a millisecond timestamp next to debug output.
 // Unit conversion isn't required because ticks = milliseconds for our case.
 defmt::timestamp!("time={=u64}ms", {
-    app::monotonics::MonoTimer::now().ticks()
+    app::monotonics::MonoTimer::now()
+        .duration_since_epoch()
+        .to_millis()
 });

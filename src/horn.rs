@@ -3,14 +3,11 @@
 #![allow(dead_code)]
 
 use crate::app::monotonics::MonoTimer as monotonic;
+use crate::app::{Duration, Instant};
 use stm32l4xx_hal::{
     gpio::{ErasedPin, Output, PushPull},
     prelude::PinState,
 };
-use systick_monotonic::fugit::{MillisDurationU64, TimerInstantU64};
-
-type Instant = TimerInstantU64<1000>;
-type Duration = MillisDurationU64;
 
 type OutputPin = ErasedPin<Output<PushPull>>;
 
