@@ -48,6 +48,8 @@ static DEVICE: device::Device = device::Device::VehicleController;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
+    use bxcan::Id;
+
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
@@ -266,26 +268,32 @@ mod app {
         can_receive::spawn().unwrap();
     }
 
-    #[task(priority = 2, shared = [can])]
+    #[task(priority = 2, shared = [can, mppt_a, mppt_b])]
     fn can_receive(mut cx: can_receive::Context) {
         defmt::trace!("task: can receive");
 
-        cx.shared.can.lock(|can| match can.receive() {
-            Ok(frame) => {
-                let id = match frame.id() {
-                    bxcan::Id::Extended(id) => id.as_raw(),
-                    bxcan::Id::Standard(id) => id.as_raw() as u32,
-                };
+        cx.shared.can.lock(|can| loop {
+            match can.receive() {
+                Ok(frame) => match frame.id() {
+                    Id::Standard(_) => {
+                        cx.shared.mppt_a.lock(|mppt| {
+                            match mppt.receive(&frame) {
+                                Ok(_) => {}
+                                Err(e) => defmt::error!("{=str}", e),
+                            }
+                        });
 
-                defmt::println!(
-                    "msg=\"new frame\" id={=u32:#x} length={=u8} data={=[u8]}",
-                    id,
-                    frame.dlc(),
-                    frame.data().unwrap()
-                );
-            }
-            Err(_) => {
-                defmt::error!("can receive buffer overrun")
+                        cx.shared.mppt_b.lock(|mppt| {
+                            match mppt.receive(&frame) {
+                                Ok(_) => {}
+                                Err(e) => defmt::error!("{=str}", e),
+                            }
+                        });
+                    }
+                    _ => {}
+                },
+                Err(nb::Error::WouldBlock) => break, // done
+                Err(nb::Error::Other(_)) => {}       // go to next frame
             }
         });
     }
