@@ -36,12 +36,15 @@ use solar_car::{com, device};
 mod horn;
 mod lighting;
 use horn::Horn;
+use prohelion::wavesculptor::WaveSculptor;
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
+    use prohelion::wavesculptor;
+
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
@@ -60,6 +63,7 @@ mod app {
         horn: Horn,
         mppt_a: Mppt,
         mppt_b: Mppt,
+        ws22: WaveSculptor,
     }
 
     #[local]
@@ -146,6 +150,8 @@ mod app {
         let mppt_a = Mppt::new(ID_BASE);
         let mppt_b = Mppt::new(ID_BASE + ID_INC);
 
+        let ws22 = WaveSculptor::new(wavesculptor::ID_BASE);
+
         // configure horn
         let horn_output = gpiob
             .pb12
@@ -169,6 +175,7 @@ mod app {
                 horn,
                 mppt_a,
                 mppt_b,
+                ws22,
             },
             Local {
                 watchdog,
