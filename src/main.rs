@@ -21,7 +21,7 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Interrupts};
+use bxcan::{filter::Mask32, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 use stm32l4xx_hal::{
     can::Can,
@@ -42,8 +42,6 @@ const SYSCLK: u32 = 80_000_000;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
-    use bxcan::Id;
-
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
