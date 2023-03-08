@@ -37,7 +37,7 @@ mod horn;
 mod lighting;
 use horn::Horn;
 
-static DEVICE: device::Device = device::Device::VehicleController;
+const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
