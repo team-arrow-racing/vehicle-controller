@@ -27,6 +27,11 @@ version = "0.1.1"
 git = "https://gitlab.com/team-arrow-racing/arrow-3/solar-car"
 # path = "../solar-car" # for local development
 
+[dependencies.prohelion-drivers]
+version = "0.1.0"
+git = "https://gitlab.com/team-arrow-racing/prohelion-drivers"
+# path = "../prohelion-drivers" # for local development
+
 [dependencies.sae-j1939]
 version = "0.1.1"
 # path = "../sae-j1939" # for local development
