@@ -25,7 +25,7 @@ use bxcan::{filter::Mask32, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, PA11, PA12, PB10, PB11, PB12, PB13, PB14, PB15},
+    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
     pac::CAN1,
     prelude::*,
     watchdog::IndependentWatchdog,
@@ -39,7 +39,6 @@ use state::State;
 mod lighting;
 use horn::Horn;
 use lighting::Lamps;
-use lighting::LampsState;
 use prohelion::wavesculptor::WaveSculptor;
 
 const DEVICE: device::Device = device::Device::VehicleController;
@@ -75,11 +74,7 @@ mod app {
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
-        status_led: PB13<Output<PushPull>>,
-        left_light_output: PB14<Output<PushPull>>, // TODO figure out pins
-        right_light_output: PB15<Output<PushPull>>,
-        day_light_output: PB10<Output<PushPull>>,
-        brake_light_output: PB11<Output<PushPull>>,
+        status_led: PB13<Output<PushPull>>
     }
 
     #[init]
@@ -170,24 +165,28 @@ mod app {
 
         let horn = Horn::new(horn_output);
 
-        // configure lamps
-        let lamps = Lamps::new();
-
+        // configure lighting
         let left_light_output = gpiob
             .pb14 // TODO figure out actual pin
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
 
         let right_light_output = gpiob
             .pb15 // TODO figure out actual pin
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
 
         let day_light_output = gpiob
             .pb10 // TODO figure out actual pin
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
 
         let brake_light_output = gpiob
             .pb11
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
+        
+        let lamps = Lamps::new(left_light_output, right_light_output, day_light_output, brake_light_output);
 
         let state = State::new();
 
@@ -215,11 +214,7 @@ mod app {
             },
             Local {
                 watchdog,
-                status_led,
-                left_light_output,
-                right_light_output,
-                day_light_output,
-                brake_light_output
+                status_led
             },
             init::Monotonics(mono),
         )
@@ -299,18 +294,13 @@ mod app {
     }
 
     // MY EYES!!
-    #[task(priority = 1, shared = [lamps], local = [left_light_output, right_light_output, day_light_output, brake_light_output])]
+    #[task(priority = 1, shared = [lamps])]
     fn lighting(mut cx: lighting::Context) {
         defmt::trace!("task: lamps");
 
         cx.shared.lamps.lock(|lamps| {
             lamps.all_off();
-            let light_state = lamps.run();
-
-            cx.local.left_light_output.set_state(PinState::from(light_state.contains(LampsState::INDICATOR_LEFT)));
-            cx.local.right_light_output.set_state(PinState::from(light_state.contains(LampsState::INDICATOR_RIGHT)));
-            cx.local.day_light_output.set_state(PinState::from(light_state.contains(LampsState::DAYTIME)));
-            cx.local.brake_light_output.set_state(PinState::from(light_state.contains(LampsState::STOP)));
+            lamps.run();
         });
 
         lighting::spawn_after(Duration::millis(50)).unwrap();
