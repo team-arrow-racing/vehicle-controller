@@ -25,7 +25,7 @@ use bxcan::{filter::Mask32, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
+    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13, PB14, PB15},
     pac::CAN1,
     prelude::*,
     watchdog::IndependentWatchdog,
@@ -76,6 +76,8 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB13<Output<PushPull>>,
+        lamps_left_output: PB14<Output<PushPull>>, // TODO figure out pins
+        lamps_right_output: PB15<Output<PushPull>>
     }
 
     #[init]
@@ -169,6 +171,14 @@ mod app {
         // configure lamps
         let lamps = Lamps::new();
 
+        let lamps_left_output = gpiob
+            .pb14 // TODO figure out actual pin
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+
+        let lamps_right_output = gpiob
+            .pb15 // TODO figure out actual pin
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+
         let state = State::new();
 
         // start heartbeat task
@@ -177,8 +187,8 @@ mod app {
         // start horn task
         horn::spawn_after(Duration::millis(100)).unwrap();
 
-        // start lamps task
-        lamps::spawn_after(Duration::millis(100)).unwrap();
+        // start lighting task
+        lighting::spawn_after(Duration::millis(50)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -196,6 +206,8 @@ mod app {
             Local {
                 watchdog,
                 status_led,
+                lamps_left_output,
+                lamps_right_output
             },
             init::Monotonics(mono),
         )
@@ -275,16 +287,31 @@ mod app {
     }
 
     // MY EYES!!
-    #[task(priority = 1, shared = [lamps])]
-    fn lamps(mut cx: lamps::Context) {
+    #[task(priority = 1, shared = [lamps], local = [lamps_left_output, lamps_right_output])]
+    fn lighting(mut cx: lighting::Context) {
         defmt::trace!("task: lamps");
 
         cx.shared.lamps.lock(|lamps| {
             lamps.all_off();
-            lamps.run();
+            let light_state = lamps.run();
+
+            match light_state {
+                LampsState::INDICATOR_LEFT => cx.local.lamps_left_output.set_state(true.into()),
+                LampsState::INDICATOR_RIGHT => cx.local.lamps_right_output.set_state(true.into()),
+                LampsState::HAZARD => {
+                    cx.local.lamps_left_output.set_state(true.into());
+                    cx.local.lamps_right_output.set_state(true.into())
+                },
+                LampsState::DAYTIME => defmt::trace!("the day, its nice"),
+                LampsState::STOP => {
+                    cx.local.lamps_left_output.set_state(false.into());
+                    cx.local.lamps_left_output.set_state(false.into());
+                },
+                _ => {}
+            }
         });
 
-        lamps::spawn_after(Duration::millis(100)).unwrap();
+        lighting::spawn_after(Duration::millis(50)).unwrap();
     }
 
 
@@ -325,16 +352,7 @@ mod app {
                                 Err(e) => defmt::error!("{=str}", e),
                             }
                         });
-                    },
-                    Id::Lamps(state) => {
-                        cx.shared.lamps.lock(|lamps| {
-                            match state {
-                                LampsState::INDICATOR_LEFT => lamps.set_left_indicator(state),
-                                LampsState::INDICATOR_RIGHT => lamps.set_right_indicator(state),
-                                LampsState::HAZARD => lamps.set_hazards(state),
-                            }
-                        });
-                    },
+                    }
                     _ => {}
                 },
                 Err(nb::Error::WouldBlock) => break, // done
