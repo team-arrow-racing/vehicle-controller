@@ -277,6 +277,7 @@ mod app {
     #[task(priority = 1, shared = [lamps])]
     fn lamps(mut cx: lamps::Context) {
         defmt::trace!("task: lamps");
+        lamps.all_off();
 
         cx.shared.lamps.lock(|lamps| {
             lamps.run();
