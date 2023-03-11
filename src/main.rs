@@ -38,6 +38,7 @@ mod state;
 use state::State;
 mod lighting;
 use horn::Horn;
+use lighting::Lamps;
 use prohelion::wavesculptor::WaveSculptor;
 
 const DEVICE: device::Device = device::Device::VehicleController;
@@ -63,6 +64,7 @@ mod app {
             >,
         >,
         horn: Horn,
+        lamps: Lamps,
         mppt_a: Mppt,
         mppt_b: Mppt,
         ws22: WaveSculptor,
@@ -163,6 +165,9 @@ mod app {
 
         let horn = Horn::new(horn_output);
 
+        // configure lamps
+        let lamps = Lamps::new();
+
         let state = State::new();
 
         // start heartbeat task
@@ -171,6 +176,9 @@ mod app {
         // start horn task
         horn::spawn_after(Duration::millis(100)).unwrap();
 
+        // start lamps task
+        lamps::spawn_after(Duration::millis(100)).unwrap();
+
         // start main loop
         run::spawn().unwrap();
 
@@ -178,6 +186,7 @@ mod app {
             Shared {
                 can,
                 horn,
+                lamps,
                 mppt_a,
                 mppt_b,
                 ws22,
@@ -264,6 +273,19 @@ mod app {
         horn::spawn_after(Duration::millis(100)).unwrap();
     }
 
+    // MY EYES!!
+    #[task(priority = 1, shared = [lamps])]
+    fn lamps(mut cx: lamps::Context) {
+        defmt::trace!("task: lamps");
+
+        cx.shared.lamps.lock(|lamps| {
+            lamps.run();
+        });
+
+        lamps::spawn_after(Duration::millis(100)).unwrap();
+    }
+
+
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(_: can_rx0_pending::Context) {
@@ -280,7 +302,7 @@ mod app {
         can_receive::spawn().unwrap();
     }
 
-    #[task(priority = 2, shared = [can, mppt_a, mppt_b])]
+    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b])]
     fn can_receive(mut cx: can_receive::Context) {
         defmt::trace!("task: can receive");
 
@@ -301,7 +323,14 @@ mod app {
                                 Err(e) => defmt::error!("{=str}", e),
                             }
                         });
-                    }
+                    },
+                    Id::Lamps(state) => {
+                        match state {
+                            LampsState::INDICATOR_LEFT => lamps.set_left_indicator(state),
+                            LampsState::INDICATOR_RIGHT => lamp.set_right_indicator(state),
+                            LampsState::HAZARD => lamps.set_hazard(state),
+                        }
+                    },
                     _ => {}
                 },
                 Err(nb::Error::WouldBlock) => break, // done
