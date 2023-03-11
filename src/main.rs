@@ -39,6 +39,7 @@ use state::State;
 mod lighting;
 use horn::Horn;
 use lighting::Lamps;
+use lighting::LampsState;
 use prohelion::wavesculptor::WaveSculptor;
 
 const DEVICE: device::Device = device::Device::VehicleController;
@@ -277,9 +278,9 @@ mod app {
     #[task(priority = 1, shared = [lamps])]
     fn lamps(mut cx: lamps::Context) {
         defmt::trace!("task: lamps");
-        lamps.all_off();
 
         cx.shared.lamps.lock(|lamps| {
+            lamps.all_off();
             lamps.run();
         });
 
@@ -326,11 +327,13 @@ mod app {
                         });
                     },
                     Id::Lamps(state) => {
-                        match state {
-                            LampsState::INDICATOR_LEFT => lamps.set_left_indicator(state),
-                            LampsState::INDICATOR_RIGHT => lamp.set_right_indicator(state),
-                            LampsState::HAZARD => lamps.set_hazard(state),
-                        }
+                        cx.shared.lamps.lock(|lamps| {
+                            match state {
+                                LampsState::INDICATOR_LEFT => lamps.set_left_indicator(state),
+                                LampsState::INDICATOR_RIGHT => lamps.set_right_indicator(state),
+                                LampsState::HAZARD => lamps.set_hazards(state),
+                            }
+                        });
                     },
                     _ => {}
                 },
