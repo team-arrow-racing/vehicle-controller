@@ -307,19 +307,10 @@ mod app {
             lamps.all_off();
             let light_state = lamps.run();
 
-            match light_state {
-                LampsState::INDICATOR_LEFT => cx.local.left_light_output.set_state(true.into()),
-                LampsState::INDICATOR_RIGHT => cx.local.right_light_output.set_state(true.into()),
-                LampsState::HAZARD => {
-                    cx.local.left_light_output.set_state(true.into());
-                    cx.local.right_light_output.set_state(true.into())
-                },
-                LampsState::DAYTIME => cx.local.day_light_output.set_state(true.into()),
-                LampsState::STOP => {
-                    cx.local.brake_light_output.set_state(true.into());
-                },
-                _ => {}
-            }
+            cx.local.left_light_output.set_state(PinState::from(light_state.contains(LampsState::INDICATOR_LEFT)));
+            cx.local.right_light_output.set_state(PinState::from(light_state.contains(LampsState::INDICATOR_RIGHT)));
+            cx.local.day_light_output.set_state(PinState::from(light_state.contains(LampsState::DAYTIME)));
+            cx.local.brake_light_output.set_state(PinState::from(light_state.contains(LampsState::STOP)));
         });
 
         lighting::spawn_after(Duration::millis(50)).unwrap();
