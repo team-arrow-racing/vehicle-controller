@@ -193,12 +193,6 @@ mod app {
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
-        // start horn task
-        horn::spawn_after(Duration::millis(100)).unwrap();
-
-        // start lighting task
-        lighting::spawn_after(Duration::millis(50)).unwrap();
-
         // start main loop
         run::spawn().unwrap();
 
@@ -256,11 +250,19 @@ mod app {
         });
     }
 
-    #[task(priority = 1, local = [watchdog])]
-    fn run(cx: run::Context) {
+    #[task(priority = 1, local = [watchdog], shared = [lamps, horn])]
+    fn run(mut cx: run::Context) {
         defmt::trace!("task: run");
 
         cx.local.watchdog.feed();
+
+        cx.shared.lamps.lock(|lamps| {
+            lamps.run();
+        });
+
+        cx.shared.horn.lock(|horn| {
+            horn.run();
+        });
 
         run::spawn_after(Duration::millis(10)).unwrap();
     }
@@ -280,32 +282,6 @@ mod app {
 
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
     }
-
-    /// Beep beep!
-    #[task(priority = 1, shared = [horn])]
-    fn horn(mut cx: horn::Context) {
-        defmt::trace!("task: horn");
-
-        cx.shared.horn.lock(|horn| {
-            horn.run();
-        });
-
-        horn::spawn_after(Duration::millis(100)).unwrap();
-    }
-
-    // MY EYES!!
-    #[task(priority = 1, shared = [lamps])]
-    fn lighting(mut cx: lighting::Context) {
-        defmt::trace!("task: lamps");
-
-        cx.shared.lamps.lock(|lamps| {
-            lamps.all_off();
-            lamps.run();
-        });
-
-        lighting::spawn_after(Duration::millis(50)).unwrap();
-    }
-
 
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
