@@ -92,18 +92,11 @@ impl Lamps {
         // 50% duty cycle waveform
         let on = (time.duration_since_epoch().to_millis() % 1000) > 500;
 
-        let mut state = self.state;
+        self.left_pin.set_state(PinState::from(self.state.contains(LampsState::INDICATOR_LEFT) && on));
+        self.right_pin.set_state(PinState::from(self.state.contains(LampsState::INDICATOR_RIGHT) && on));
+        self.day_pin.set_state(PinState::from(self.state.contains(LampsState::DAYTIME)));
+        self.brake_pin.set_state(PinState::from(self.state.contains(LampsState::STOP)));
 
-        // clear indicator states if they should be off
-        if !on {
-            state.remove(LampsState::HAZARD);
-        }
-
-        self.left_pin.set_state(PinState::from(state.contains(LampsState::INDICATOR_LEFT)));
-        self.right_pin.set_state(PinState::from(state.contains(LampsState::INDICATOR_RIGHT)));
-        self.day_pin.set_state(PinState::from(state.contains(LampsState::DAYTIME)));
-        self.brake_pin.set_state(PinState::from(state.contains(LampsState::STOP)));
-
-        state
+        self.state
     }
 }
