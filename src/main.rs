@@ -23,6 +23,9 @@ use panic_probe as _;
 
 use bxcan::{filter::Mask32, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
+
+use j1939::pgn::{Number, Pgn};
+
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
@@ -40,6 +43,33 @@ mod lighting;
 use horn::Horn;
 use lighting::Lamps;
 use prohelion::wavesculptor::WaveSculptor;
+
+/// Message format identifier
+#[repr(u8)]
+pub enum VCUMessageFormat {
+    // broadcast messages
+
+    /// Startup status message
+    Startup = 0xF0,
+    /// Heartbeat status message
+    Heartbeat = 0xF1,
+
+    // addressable messages
+
+    /// Generic reset command message
+    Reset = 0x00,
+    /// Generic enable command message
+    Enable = 0x01,
+    /// Generic disable command message
+    Disable = 0x02,
+}
+
+pub const PGN_MESSAGE_TEST: Number = Number {
+    specific: device::Device::VehicleController as u8,
+    format: VCUMessageFormat::Enable as u8,
+    data_page: false,
+    extended_data_page: false,
+};
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
@@ -320,6 +350,21 @@ mod app {
                                 Err(e) => defmt::error!("{=str}", e),
                             }
                         });
+                    },
+                    Id::Extended(id) => {
+                        // convert to a J1939 id
+                        let id: j1939::ExtendedId = id.into();
+
+                        // is this message for us?
+                        match id.pgn {
+                            Pgn::Destination(pgn) => match pgn {
+                                PGN_MESSAGE_TEST => {
+                                    defmt::trace!("aur naur");
+                                },
+                                _ => {}
+                            },
+                            _ => {} // ignore broadcast messages
+                        }
                     }
                     _ => {}
                 },
