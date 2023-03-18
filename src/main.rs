@@ -24,8 +24,6 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
-use j1939::pgn::{Number, Pgn};
-
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
@@ -35,7 +33,10 @@ use stm32l4xx_hal::{
 };
 
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
-use solar_car::{com, device};
+use solar_car::{
+    com, device, j1939,
+    j1939::pgn::{Number, Pgn}
+};
 mod horn;
 mod state;
 use state::State;
