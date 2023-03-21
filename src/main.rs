@@ -307,7 +307,7 @@ mod app {
 
         if cx.local.status_led.is_set_low() {
             cx.shared.can.lock(|can| {
-                can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
+                let _ = can.transmit(&com::heartbeat::message(DEVICE));
             });
         }
 
