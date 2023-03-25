@@ -234,7 +234,7 @@ mod app {
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
         // start comms with aic
-        aic_comms::spawn_after(Duration::millis(500)).unwrap();
+        feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -311,14 +311,14 @@ mod app {
     }
 
     #[task(priority = 1, shared = [can])]
-    fn aic_comms(mut cx: aic_comms::Context) {
+    fn feed_watchdog(mut cx: feed_watchdog::Context) {
         defmt::trace!("task: aic_comms");
 
         cx.shared.can.lock(|can| {
-            let _ = can.transmit(&com::array::vcu_comms(DEVICE));
+            let _ = can.transmit(&com::array::feed_watchdog(DEVICE));
         });
         
-        aic_comms::spawn_after(Duration::millis(500)).unwrap();
+        feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
 
     /// Live, laugh, love
