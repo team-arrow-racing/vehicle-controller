@@ -72,6 +72,15 @@ pub const PGN_MESSAGE_TEST: Number = Number {
     extended_data_page: false,
 };
 
+pub const PGN_LIGHTING_STATE: Number = Number {
+    specific: device::Device::VehicleController as u8,
+    format: VCUMessageFormat::Enable as u8,
+    data_page: false,
+    extended_data_page: false,
+};
+
+// TODO store last time we received a message
+
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
 
@@ -224,6 +233,9 @@ mod app {
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
+        // start comms with aic
+        aic_comms::spawn_after(Duration::millis(500)).unwrap();
+
         // start main loop
         run::spawn().unwrap();
 
@@ -298,6 +310,17 @@ mod app {
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
+    #[task(priority = 1, shared = [can])]
+    fn aic_comms(mut cx: aic_comms::Context) {
+        defmt::trace!("task: aic_comms");
+
+        cx.shared.can.lock(|can| {
+            let _ = can.transmit(&com::array::vcu_comms(DEVICE));
+        });
+        
+        aic_comms::spawn_after(Duration::millis(500)).unwrap();
+    }
+
     /// Live, laugh, love
     #[task(priority = 1, shared = [can], local = [status_led])]
     fn heartbeat(mut cx: heartbeat::Context) {
@@ -332,7 +355,7 @@ mod app {
 
     #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b])]
     fn can_receive(mut cx: can_receive::Context) {
-        defmt::trace!("task: can receive");
+        defmt::debug!("task: can receive");
 
         cx.shared.can.lock(|can| loop {
             match can.receive() {
@@ -361,6 +384,10 @@ mod app {
                             Pgn::Destination(pgn) => match pgn {
                                 PGN_MESSAGE_TEST => {
                                     defmt::trace!("aur naur");
+                                },
+                                PGN_LIGHTING_STATE => {
+                                    defmt::trace!("oooh lights");
+                                    // cx.shared.lamps.lock(|lamps| lamps.set_left_indicator(true));
                                 },
                                 _ => {}
                             },
