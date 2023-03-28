@@ -21,7 +21,7 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Id, Interrupts, Frame};
+use bxcan::{filter::Mask32, Frame, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
@@ -35,7 +35,7 @@ use stm32l4xx_hal::{
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
 use solar_car::{
     com, device, j1939,
-    j1939::pgn::{Number, Pgn}
+    j1939::pgn::{Number, Pgn},
 };
 mod horn;
 mod state;
@@ -49,14 +49,12 @@ use prohelion::wavesculptor::WaveSculptor;
 #[repr(u8)]
 pub enum VCUMessageFormat {
     // broadcast messages
-
     /// Startup status message
     Startup = 0xF0,
     /// Heartbeat status message
     Heartbeat = 0xF1,
 
     // addressable messages
-
     /// Generic reset command message
     Reset = 0x00,
     /// Generic enable command message
@@ -114,7 +112,7 @@ mod app {
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
-        status_led: PB13<Output<PushPull>>
+        status_led: PB13<Output<PushPull>>,
     }
 
     #[init]
@@ -225,8 +223,13 @@ mod app {
             .pb11
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
             .erase();
-        
-        let lamps = Lamps::new(left_light_output, right_light_output, day_light_output, brake_light_output);
+
+        let lamps = Lamps::new(
+            left_light_output,
+            right_light_output,
+            day_light_output,
+            brake_light_output,
+        );
 
         let state = State::new();
 
@@ -251,7 +254,7 @@ mod app {
             },
             Local {
                 watchdog,
-                status_led
+                status_led,
             },
             init::Monotonics(mono),
         )
@@ -317,7 +320,7 @@ mod app {
         cx.shared.can.lock(|can| {
             let _ = can.transmit(&com::array::feed_watchdog(DEVICE));
         });
-        
+
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
 
@@ -367,11 +370,13 @@ mod app {
             let id = match frame.id() {
                 Id::Standard(_) => {
                     cx.shared.mppt_a.lock(|mppt_a| {
-                        cx.shared.mppt_b.lock(|mppt_b| handle_mppt_frame(&frame, mppt_a, mppt_b))
+                        cx.shared.mppt_b.lock(|mppt_b| {
+                            handle_mppt_frame(&frame, mppt_a, mppt_b)
+                        })
                     });
                     continue; // go to next frame
-                },
-                Id::Extended(id) => id
+                }
+                Id::Extended(id) => id,
             };
 
             let id: j1939::ExtendedId = id.into();
@@ -379,7 +384,10 @@ mod app {
             match id.pgn {
                 Pgn::Destination(pgn) => match pgn {
                     PGN_MESSAGE_TEST => defmt::trace!("aur naur"),
-                    PGN_LIGHTING_STATE => cx.shared.lamps.lock(|lamps| handle_lighting_frame(lamps)),
+                    PGN_LIGHTING_STATE => cx
+                        .shared
+                        .lamps
+                        .lock(|lamps| handle_lighting_frame(lamps)),
                     _ => {}
                 },
                 _ => {} // ignore broadcast messages
