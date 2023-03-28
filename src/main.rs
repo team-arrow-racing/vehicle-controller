@@ -21,7 +21,7 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Id, Interrupts};
+use bxcan::{filter::Mask32, Id, Interrupts, Frame};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
@@ -162,7 +162,8 @@ mod app {
                 cx.device.CAN1,
                 (tx, rx),
             ))
-            .set_bit_timing(0x001c_0009); // 500kbit/s
+            .set_bit_timing(0x001c_0009)
+            .set_loopback(true); // 500kbit/s
 
             let mut can = can.enable();
 
@@ -358,48 +359,50 @@ mod app {
         defmt::debug!("task: can receive");
 
         cx.shared.can.lock(|can| loop {
-            match can.receive() {
-                Ok(frame) => match frame.id() {
-                    Id::Standard(_) => {
-                        cx.shared.mppt_a.lock(|mppt| {
-                            match mppt.receive(&frame) {
-                                Ok(_) => {}
-                                Err(e) => defmt::error!("{=str}", e),
-                            }
-                        });
+            let frame = match can.receive() {
+                Ok(frame) => frame,
+                Err(nb::Error::WouldBlock) => break, // done
+                Err(nb::Error::Other(_)) => continue, // go to next frame
+            };
 
-                        cx.shared.mppt_b.lock(|mppt| {
-                            match mppt.receive(&frame) {
-                                Ok(_) => {}
-                                Err(e) => defmt::error!("{=str}", e),
-                            }
-                        });
-                    },
-                    Id::Extended(id) => {
-                        // convert to a J1939 id
-                        let id: j1939::ExtendedId = id.into();
+            let id = match frame.id() {
+                Id::Standard(_) => {
+                    cx.shared.mppt_a.lock(|mppt_a| {
+                        cx.shared.mppt_b.lock(|mppt_b| handle_mppt_frame(&frame, mppt_a, mppt_b))
+                    });
+                    continue; // go to next frame
+                },
+                Id::Extended(id) => id
+            };
 
-                        // is this message for us?
-                        match id.pgn {
-                            Pgn::Destination(pgn) => match pgn {
-                                PGN_MESSAGE_TEST => {
-                                    defmt::trace!("aur naur");
-                                },
-                                PGN_LIGHTING_STATE => {
-                                    defmt::trace!("oooh lights");
-                                    // cx.shared.lamps.lock(|lamps| lamps.set_left_indicator(true));
-                                },
-                                _ => {}
-                            },
-                            _ => {} // ignore broadcast messages
-                        }
-                    }
+            let id: j1939::ExtendedId = id.into();
+
+            match id.pgn {
+                Pgn::Destination(pgn) => match pgn {
+                    PGN_MESSAGE_TEST => defmt::trace!("aur naur"),
+                    PGN_LIGHTING_STATE => cx.shared.lamps.lock(|lamps| handle_lighting_frame(lamps)),
                     _ => {}
                 },
-                Err(nb::Error::WouldBlock) => break, // done
-                Err(nb::Error::Other(_)) => {}       // go to next frame
+                _ => {} // ignore broadcast messages
             }
         });
+    }
+
+    fn handle_mppt_frame(frame: &Frame, mppt_a: &mut Mppt, mppt_b: &mut Mppt) {
+        match mppt_a.receive(&frame) {
+            Ok(_) => {}
+            Err(e) => defmt::error!("{=str}", e),
+        };
+
+        match mppt_b.receive(&frame) {
+            Ok(_) => {}
+            Err(e) => defmt::error!("{=str}", e),
+        };
+    }
+
+    fn handle_lighting_frame(lamps: &mut Lamps) {
+        defmt::trace!("oooh lights");
+        // cx.shared.lamps.lock(|lamps| lamps.set_left_indicator(true));
     }
 
     #[idle]
