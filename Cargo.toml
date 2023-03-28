@@ -32,10 +32,6 @@ version = "0.1.0"
 git = "https://gitlab.com/team-arrow-racing/prohelion-drivers"
 # path = "../prohelion-drivers" # for local development
 
-[dependencies.sae-j1939]
-version = "0.1.1"
-# path = "../sae-j1939" # for local development
-
 [dev-dependencies]
 defmt-test = "0.3"
 

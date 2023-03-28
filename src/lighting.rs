@@ -4,6 +4,12 @@
 
 use crate::app::monotonics::MonoTimer as monotonic;
 use bitflags::bitflags;
+use stm32l4xx_hal::{
+    gpio::{ErasedPin, Output, PushPull},
+    prelude::PinState,
+};
+
+type OutputPin = ErasedPin<Output<PushPull>>;
 
 bitflags! {
     /// As per
@@ -25,16 +31,27 @@ bitflags! {
 pub struct Lamps {
     state: LampsState,
     on_cycle: bool,
+    left_pin: OutputPin,
+    right_pin: OutputPin,
+    day_pin: OutputPin,
+    brake_pin: OutputPin
 }
 
 impl Lamps {
     /// Creat a new state machine instance
-    pub fn new() -> Self {
+    pub fn new(left_pin: OutputPin,
+                right_pin: OutputPin,
+                day_pin: OutputPin,
+                brake_pin: OutputPin) -> Self {
         Self {
             state: LampsState {
                 ..Default::default()
             },
             on_cycle: false,
+            left_pin,
+            right_pin,
+            day_pin,
+            brake_pin
         }
     }
 
@@ -75,13 +92,11 @@ impl Lamps {
         // 50% duty cycle waveform
         let on = (time.duration_since_epoch().to_millis() % 1000) > 500;
 
-        let mut state = self.state;
+        self.left_pin.set_state(PinState::from(self.state.contains(LampsState::INDICATOR_LEFT) && on));
+        self.right_pin.set_state(PinState::from(self.state.contains(LampsState::INDICATOR_RIGHT) && on));
+        self.day_pin.set_state(PinState::from(self.state.contains(LampsState::DAYTIME)));
+        self.brake_pin.set_state(PinState::from(self.state.contains(LampsState::STOP)));
 
-        // clear indicator states if they should be off
-        if !on {
-            state.remove(LampsState::HAZARD);
-        }
-
-        state
+        self.state
     }
 }

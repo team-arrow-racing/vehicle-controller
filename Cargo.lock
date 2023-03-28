@@ -600,7 +600,6 @@ dependencies = [
  "nb 1.0.0",
  "panic-probe",
  "prohelion-drivers",
- "sae-j1939",
  "solar-car",
  "stm32l4xx-hal",
 ]

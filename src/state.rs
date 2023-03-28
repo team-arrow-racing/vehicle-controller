@@ -1,4 +1,6 @@
 //! Vehicle state machine.
+ 
+#![allow(dead_code)]
 
 pub enum State {
     /// Off

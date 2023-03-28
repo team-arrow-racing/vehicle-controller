@@ -21,8 +21,9 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Id, Interrupts};
+use bxcan::{filter::Mask32, Frame, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
+
 use stm32l4xx_hal::{
     can::Can,
     gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
@@ -32,13 +33,51 @@ use stm32l4xx_hal::{
 };
 
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
-use solar_car::{com, device};
+use solar_car::{
+    com, device, j1939,
+    j1939::pgn::{Number, Pgn},
+};
 mod horn;
 mod state;
 use state::State;
 mod lighting;
 use horn::Horn;
+use lighting::Lamps;
 use prohelion::wavesculptor::WaveSculptor;
+
+/// Message format identifier
+#[repr(u8)]
+pub enum VCUMessageFormat {
+    // broadcast messages
+    /// Startup status message
+    Startup = 0xF0,
+    /// Heartbeat status message
+    Heartbeat = 0xF1,
+
+    // addressable messages
+    /// Generic reset command message
+    Reset = 0x00,
+    /// Generic enable command message
+    Enable = 0x01,
+    /// Generic disable command message
+    Disable = 0x02,
+}
+
+pub const PGN_MESSAGE_TEST: Number = Number {
+    specific: device::Device::VehicleController as u8,
+    format: VCUMessageFormat::Enable as u8,
+    data_page: false,
+    extended_data_page: false,
+};
+
+pub const PGN_LIGHTING_STATE: Number = Number {
+    specific: device::Device::VehicleController as u8,
+    format: VCUMessageFormat::Enable as u8,
+    data_page: false,
+    extended_data_page: false,
+};
+
+// TODO store last time we received a message
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
@@ -63,6 +102,7 @@ mod app {
             >,
         >,
         horn: Horn,
+        lamps: Lamps,
         mppt_a: Mppt,
         mppt_b: Mppt,
         ws22: WaveSculptor,
@@ -163,13 +203,41 @@ mod app {
 
         let horn = Horn::new(horn_output);
 
+        // configure lighting
+        let left_light_output = gpiob
+            .pb14 // TODO figure out actual pin
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
+
+        let right_light_output = gpiob
+            .pb15 // TODO figure out actual pin
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
+
+        let day_light_output = gpiob
+            .pb10 // TODO figure out actual pin
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
+
+        let brake_light_output = gpiob
+            .pb11
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+            .erase();
+
+        let lamps = Lamps::new(
+            left_light_output,
+            right_light_output,
+            day_light_output,
+            brake_light_output,
+        );
+
         let state = State::new();
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
-        // start horn task
-        horn::spawn_after(Duration::millis(100)).unwrap();
+        // start comms with aic
+        feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -178,6 +246,7 @@ mod app {
             Shared {
                 can,
                 horn,
+                lamps,
                 mppt_a,
                 mppt_b,
                 ws22,
@@ -227,13 +296,32 @@ mod app {
         });
     }
 
-    #[task(priority = 1, local = [watchdog])]
-    fn run(cx: run::Context) {
+    #[task(priority = 1, local = [watchdog], shared = [lamps, horn])]
+    fn run(mut cx: run::Context) {
         defmt::trace!("task: run");
 
         cx.local.watchdog.feed();
 
+        cx.shared.lamps.lock(|lamps| {
+            lamps.run();
+        });
+
+        cx.shared.horn.lock(|horn| {
+            horn.run();
+        });
+
         run::spawn_after(Duration::millis(10)).unwrap();
+    }
+
+    #[task(priority = 1, shared = [can])]
+    fn feed_watchdog(mut cx: feed_watchdog::Context) {
+        defmt::trace!("task: aic_comms");
+
+        cx.shared.can.lock(|can| {
+            let _ = can.transmit(&com::array::feed_watchdog(DEVICE));
+        });
+
+        feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
 
     /// Live, laugh, love
@@ -245,23 +333,11 @@ mod app {
 
         if cx.local.status_led.is_set_low() {
             cx.shared.can.lock(|can| {
-                can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
+                let _ = can.transmit(&com::heartbeat::message(DEVICE));
             });
         }
 
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
-    }
-
-    /// Beep beep!
-    #[task(priority = 1, shared = [horn])]
-    fn horn(mut cx: horn::Context) {
-        defmt::trace!("task: horn");
-
-        cx.shared.horn.lock(|horn| {
-            horn.run();
-        });
-
-        horn::spawn_after(Duration::millis(100)).unwrap();
     }
 
     /// Triggers on RX mailbox event.
@@ -280,34 +356,60 @@ mod app {
         can_receive::spawn().unwrap();
     }
 
-    #[task(priority = 2, shared = [can, mppt_a, mppt_b])]
+    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b])]
     fn can_receive(mut cx: can_receive::Context) {
         defmt::trace!("task: can receive");
 
         cx.shared.can.lock(|can| loop {
-            match can.receive() {
-                Ok(frame) => match frame.id() {
-                    Id::Standard(_) => {
-                        cx.shared.mppt_a.lock(|mppt| {
-                            match mppt.receive(&frame) {
-                                Ok(_) => {}
-                                Err(e) => defmt::error!("{=str}", e),
-                            }
-                        });
+            let frame = match can.receive() {
+                Ok(frame) => frame,
+                Err(nb::Error::WouldBlock) => break, // done
+                Err(nb::Error::Other(_)) => continue, // go to next frame
+            };
 
-                        cx.shared.mppt_b.lock(|mppt| {
-                            match mppt.receive(&frame) {
-                                Ok(_) => {}
-                                Err(e) => defmt::error!("{=str}", e),
-                            }
-                        });
-                    }
+            let id = match frame.id() {
+                Id::Standard(_) => {
+                    cx.shared.mppt_a.lock(|mppt_a| {
+                        cx.shared.mppt_b.lock(|mppt_b| {
+                            handle_mppt_frame(&frame, mppt_a, mppt_b)
+                        })
+                    });
+                    continue; // go to next frame
+                }
+                Id::Extended(id) => id,
+            };
+
+            let id: j1939::ExtendedId = id.into();
+
+            match id.pgn {
+                Pgn::Destination(pgn) => match pgn {
+                    PGN_MESSAGE_TEST => defmt::trace!("aur naur"),
+                    PGN_LIGHTING_STATE => cx
+                        .shared
+                        .lamps
+                        .lock(|lamps| handle_lighting_frame(lamps)),
                     _ => {}
                 },
-                Err(nb::Error::WouldBlock) => break, // done
-                Err(nb::Error::Other(_)) => {}       // go to next frame
+                _ => {} // ignore broadcast messages
             }
         });
+    }
+
+    fn handle_mppt_frame(frame: &Frame, mppt_a: &mut Mppt, mppt_b: &mut Mppt) {
+        match mppt_a.receive(&frame) {
+            Ok(_) => {}
+            Err(e) => defmt::error!("{=str}", e),
+        };
+
+        match mppt_b.receive(&frame) {
+            Ok(_) => {}
+            Err(e) => defmt::error!("{=str}", e),
+        };
+    }
+
+    fn handle_lighting_frame(lamps: &mut Lamps) {
+        defmt::trace!("oooh lights");
+        // cx.shared.lamps.lock(|lamps| lamps.set_left_indicator(true));
     }
 
     #[idle]
