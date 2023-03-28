@@ -162,8 +162,7 @@ mod app {
                 cx.device.CAN1,
                 (tx, rx),
             ))
-            .set_bit_timing(0x001c_0009)
-            .set_loopback(true); // 500kbit/s
+            .set_bit_timing(0x001c_0009); // 500kbit/s
 
             let mut can = can.enable();
 
