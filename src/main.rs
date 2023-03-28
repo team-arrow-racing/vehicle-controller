@@ -356,7 +356,7 @@ mod app {
 
     #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b])]
     fn can_receive(mut cx: can_receive::Context) {
-        defmt::debug!("task: can receive");
+        defmt::trace!("task: can receive");
 
         cx.shared.can.lock(|can| loop {
             let frame = match can.receive() {
