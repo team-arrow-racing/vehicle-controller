@@ -24,12 +24,12 @@ dwt-systick-monotonic = { version = "1.1.0", features = ["extend"] }
 
 [dependencies.solar-car]
 version = "0.1.1"
-git = "https://gitlab.com/team-arrow-racing/arrow-3/solar-car"
+git = "https://github.com/team-arrow-racing/solar-car-common"
 # path = "../solar-car" # for local development
 
 [dependencies.prohelion-drivers]
 version = "0.1.0"
-git = "https://gitlab.com/team-arrow-racing/prohelion-drivers"
+git = "https://github.com/team-arrow-racing/phln-rs"
 # path = "../prohelion-drivers" # for local development
 
 [dev-dependencies]
