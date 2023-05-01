@@ -355,7 +355,7 @@ mod app {
             com::lighting::message(DEVICE, *cx.local.demo_light_data);
 
         cx.shared.can.lock(|can| {
-            can.transmit(&test_frame);
+            let _ = can.transmit(&test_frame);
             *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
 
             if *cx.local.demo_light_data == 0b10000 {
