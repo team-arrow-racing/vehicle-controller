@@ -3,30 +3,13 @@
 #![allow(dead_code)]
 
 use crate::app::monotonics::MonoTimer as monotonic;
-use bitflags::bitflags;
+use solar_car::com::lighting::LampsState;
 use stm32l4xx_hal::{
     gpio::{ErasedPin, Output, PushPull},
     prelude::PinState,
 };
 
 type OutputPin = ErasedPin<Output<PushPull>>;
-
-bitflags! {
-    /// As per
-    #[derive(Default)]
-    pub struct LampsState: u8 {
-        // indicator lamps
-        const INDICATOR_LEFT = 1 << 0;
-        const INDICATOR_RIGHT = 1 << 1;
-        const HAZARD = Self::INDICATOR_LEFT.bits | Self::INDICATOR_RIGHT.bits;
-
-        // daytime lamps
-        const DAYTIME = 1 << 2;
-
-        // stop lamps
-        const STOP = 1 << 3;
-    }
-}
 
 pub struct Lamps {
     state: LampsState,
@@ -44,9 +27,7 @@ impl Lamps {
                 day_pin: OutputPin,
                 brake_pin: OutputPin) -> Self {
         Self {
-            state: LampsState {
-                ..Default::default()
-            },
+            state: LampsState::default(),
             on_cycle: false,
             left_pin,
             right_pin,
@@ -83,6 +64,20 @@ impl Lamps {
     /// Turn all of the lights off
     pub fn all_off(&mut self) {
         self.state = LampsState::empty();
+    }
+
+    pub fn set_state(&mut self, state: LampsState) {
+        // self.state = LampsState { bits: state };
+        self.state = LampsState::from(state);
+
+        match self.state {
+            LampsState::INDICATOR_LEFT => defmt::debug!("Indicating LEFT!"),
+            LampsState::INDICATOR_RIGHT => defmt::debug!("Indicating RIGHT!"),
+            LampsState::HAZARD => defmt::debug!("Hazard Ligghts on"),
+            LampsState::DAYTIME => defmt::debug!("Daylights on"),
+            LampsState::STOP => defmt::debug!("Braking!!"),
+            _ => defmt::debug!("WAIT WAIT WAIT")
+        }
     }
 
     /// Runner that must be called regularly to keep hardware up to date
