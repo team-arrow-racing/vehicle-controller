@@ -234,7 +234,7 @@ mod app {
 
         let state = State::new();
 
-        let mut demo_light_data = 1;
+        let demo_light_data = 1;
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
