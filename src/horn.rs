@@ -20,7 +20,7 @@ pub struct Horn {
 /// Message format identifier
 #[repr(u8)]
 pub enum HornMessageFormat {
-    Enable = 0xEE
+    Enable = 0xEE,
 }
 
 static MAXIMUM_DURATION: Duration = Duration::millis(2000);

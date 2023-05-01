@@ -17,22 +17,24 @@ pub struct Lamps {
     left_pin: OutputPin,
     right_pin: OutputPin,
     day_pin: OutputPin,
-    brake_pin: OutputPin
+    brake_pin: OutputPin,
 }
 
 impl Lamps {
     /// Creat a new state machine instance
-    pub fn new(left_pin: OutputPin,
-                right_pin: OutputPin,
-                day_pin: OutputPin,
-                brake_pin: OutputPin) -> Self {
+    pub fn new(
+        left_pin: OutputPin,
+        right_pin: OutputPin,
+        day_pin: OutputPin,
+        brake_pin: OutputPin,
+    ) -> Self {
         Self {
             state: LampsState::default(),
             on_cycle: false,
             left_pin,
             right_pin,
             day_pin,
-            brake_pin
+            brake_pin,
         }
     }
 
@@ -76,7 +78,7 @@ impl Lamps {
             LampsState::HAZARD => defmt::debug!("Hazard Ligghts on"),
             LampsState::DAYTIME => defmt::debug!("Daylights on"),
             LampsState::STOP => defmt::debug!("Braking!!"),
-            _ => defmt::debug!("WAIT WAIT WAIT")
+            _ => defmt::debug!("WAIT WAIT WAIT"),
         }
     }
 
@@ -87,10 +89,17 @@ impl Lamps {
         // 50% duty cycle waveform
         let on = (time.duration_since_epoch().to_millis() % 1000) > 500;
 
-        self.left_pin.set_state(PinState::from(self.state.contains(LampsState::INDICATOR_LEFT) && on));
-        self.right_pin.set_state(PinState::from(self.state.contains(LampsState::INDICATOR_RIGHT) && on));
-        self.day_pin.set_state(PinState::from(self.state.contains(LampsState::DAYTIME)));
-        self.brake_pin.set_state(PinState::from(self.state.contains(LampsState::STOP)));
+        self.left_pin.set_state(PinState::from(
+            self.state.contains(LampsState::INDICATOR_LEFT) && on,
+        ));
+        self.right_pin.set_state(PinState::from(
+            self.state.contains(LampsState::INDICATOR_RIGHT) && on,
+        ));
+        self.day_pin.set_state(PinState::from(
+            self.state.contains(LampsState::DAYTIME),
+        ));
+        self.brake_pin
+            .set_state(PinState::from(self.state.contains(LampsState::STOP)));
 
         self.state
     }

@@ -334,7 +334,7 @@ dependencies = [
 [[package]]
 name = "j1939"
 version = "0.1.1"
-source = "git+https://gitlab.com/team-arrow-racing/sae-j1939#469e6769dad054df5a3f83a7f77e0d78d2af9765"
+source = "git+https://github.com/team-arrow-racing/sae-j1939-rs#e1e5acc9e292af12cd2340707130a815dead47cf"
 dependencies = [
  "bxcan 0.6.2",
 ]
@@ -549,15 +549,13 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "solar-car"
 version = "0.1.1"
-source = "git+https://github.com/team-arrow-racing/solar-car-common#ea67adc408e8f970009fc671dc89e77624ee7358"
+source = "git+https://github.com/team-arrow-racing/solar-car-common#efe317691a976d207c4d69cb1ff09eb16a83f81b"
 dependencies = [
  "bitflags",
  "bxcan 0.6.2",
  "defmt",
- "heapless",
  "j1939",
  "packed_struct",
- "stm32l4xx-hal",
 ]
 
 [[package]]

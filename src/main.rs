@@ -113,7 +113,7 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB13<Output<PushPull>>,
-        demo_light_data: u8
+        demo_light_data: u8,
     }
 
     #[init]
@@ -260,7 +260,7 @@ mod app {
             Local {
                 watchdog,
                 status_led,
-                demo_light_data
+                demo_light_data,
             },
             init::Monotonics(mono),
         )
@@ -351,11 +351,12 @@ mod app {
         defmt::trace!("task: writing a lighting frame");
 
         // let test_frame = Frame::new_data(ExtendedId::new(id.to_bits()).unwrap(), *cx.local.demo_light_data);
-        let test_frame = com::lighting::message(DEVICE, *cx.local.demo_light_data);
-        
+        let test_frame =
+            com::lighting::message(DEVICE, *cx.local.demo_light_data);
+
         cx.shared.can.lock(|can| {
             can.transmit(&test_frame);
-            *cx.local.demo_light_data =  *cx.local.demo_light_data << 1;
+            *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
 
             if *cx.local.demo_light_data == 0b10000 {
                 *cx.local.demo_light_data = 1;
@@ -409,9 +410,14 @@ mod app {
             match id.pgn {
                 Pgn::Destination(pgn) => match pgn {
                     PGN_MESSAGE_TEST => defmt::debug!("aur naur"),
-                    com::lighting::PGN_LIGHTING_STATE => cx.shared.lamps.lock(|lamps| handle_lighting_frame(lamps, &frame)),
+                    com::lighting::PGN_LIGHTING_STATE => cx
+                        .shared
+                        .lamps
+                        .lock(|lamps| handle_lighting_frame(lamps, &frame)),
                     PGN_HORN_MESSAGE => defmt::debug!("honk"),
-                    _ => {defmt::debug!("whut happun")}
+                    _ => {
+                        defmt::debug!("whut happun")
+                    }
                 },
                 _ => {} // ignore broadcast messages
             }
@@ -439,10 +445,10 @@ mod app {
                     Some(data) => {
                         lamps.set_state(data);
                         lamps.run();
-                    },
-                    _ => defmt::debug!("Got invalid lighting data")
+                    }
+                    _ => defmt::debug!("Got invalid lighting data"),
                 }
-            },
+            }
             _ => {}
         }
     }
