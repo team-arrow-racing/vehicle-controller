@@ -17,6 +17,12 @@ pub struct Horn {
     pin: OutputPin,
 }
 
+/// Message format identifier
+#[repr(u8)]
+pub enum HornMessageFormat {
+    Enable = 0xEE
+}
+
 static MAXIMUM_DURATION: Duration = Duration::millis(2000);
 
 impl Horn {
@@ -48,6 +54,10 @@ impl Horn {
     /// Stop the horn.
     pub fn stop(&mut self) {
         self.state = false;
+    }
+
+    pub fn set_on(&mut self) {
+        self.state = true;
     }
 
     /// Run to update state.

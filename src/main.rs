@@ -41,7 +41,7 @@ mod horn;
 mod state;
 use state::State;
 mod lighting;
-use horn::Horn;
+use horn::{Horn, HornMessageFormat};
 use lighting::Lamps;
 use prohelion::wavesculptor::WaveSculptor;
 
@@ -70,9 +70,9 @@ pub const PGN_MESSAGE_TEST: Number = Number {
     extended_data_page: false,
 };
 
-pub const PGN_LIGHTING_STATE: Number = Number {
+pub const PGN_HORN_MESSAGE: Number = Number {
     specific: device::Device::VehicleController as u8,
-    format: VCUMessageFormat::Enable as u8,
+    format: HornMessageFormat::Enable as u8,
     data_page: false,
     extended_data_page: false,
 };
@@ -113,6 +113,7 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB13<Output<PushPull>>,
+        demo_light_data: u8
     }
 
     #[init]
@@ -233,11 +234,15 @@ mod app {
 
         let state = State::new();
 
+        let mut demo_light_data = 1;
+
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
+
+        demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -255,6 +260,7 @@ mod app {
             Local {
                 watchdog,
                 status_led,
+                demo_light_data
             },
             init::Monotonics(mono),
         )
@@ -340,6 +346,25 @@ mod app {
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
     }
 
+    #[task(priority = 1, shared = [can], local = [demo_light_data])]
+    fn demo_lighting(mut cx: demo_lighting::Context) {
+        defmt::trace!("task: writing a lighting frame");
+
+        // let test_frame = Frame::new_data(ExtendedId::new(id.to_bits()).unwrap(), *cx.local.demo_light_data);
+        let test_frame = com::lighting::message(DEVICE, *cx.local.demo_light_data);
+        
+        cx.shared.can.lock(|can| {
+            can.transmit(&test_frame);
+            *cx.local.demo_light_data =  *cx.local.demo_light_data << 1;
+
+            if *cx.local.demo_light_data == 0b10000 {
+                *cx.local.demo_light_data = 1;
+            }
+        });
+
+        demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
+    }
+
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(_: can_rx0_pending::Context) {
@@ -383,12 +408,10 @@ mod app {
 
             match id.pgn {
                 Pgn::Destination(pgn) => match pgn {
-                    PGN_MESSAGE_TEST => defmt::trace!("aur naur"),
-                    PGN_LIGHTING_STATE => cx
-                        .shared
-                        .lamps
-                        .lock(|lamps| handle_lighting_frame(lamps)),
-                    _ => {}
+                    PGN_MESSAGE_TEST => defmt::debug!("aur naur"),
+                    com::lighting::PGN_LIGHTING_STATE => cx.shared.lamps.lock(|lamps| handle_lighting_frame(lamps, &frame)),
+                    PGN_HORN_MESSAGE => defmt::debug!("honk"),
+                    _ => {defmt::debug!("whut happun")}
                 },
                 _ => {} // ignore broadcast messages
             }
@@ -407,9 +430,21 @@ mod app {
         };
     }
 
-    fn handle_lighting_frame(lamps: &mut Lamps) {
-        defmt::trace!("oooh lights");
-        // cx.shared.lamps.lock(|lamps| lamps.set_left_indicator(true));
+    fn handle_lighting_frame(lamps: &mut Lamps, frame: &Frame) {
+        defmt::debug!("received lighting frame data {:?}", frame.data());
+        match frame.data() {
+            Some(bytes) => {
+                let bytes_int = bytes[0]; // TODO confirm data is just in first index
+                match com::lighting::LampsState::from_bits(bytes_int) {
+                    Some(data) => {
+                        lamps.set_state(data);
+                        lamps.run();
+                    },
+                    _ => defmt::debug!("Got invalid lighting data")
+                }
+            },
+            _ => {}
+        }
     }
 
     #[idle]
