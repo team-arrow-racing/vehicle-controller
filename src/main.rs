@@ -43,7 +43,7 @@ use state::State;
 mod lighting;
 use horn::{Horn, HornMessageFormat};
 use lighting::Lamps;
-use prohelion::wavesculptor::WaveSculptor;
+use phln::wavesculptor::WaveSculptor;
 
 /// Message format identifier
 #[repr(u8)]
@@ -84,7 +84,7 @@ const SYSCLK: u32 = 80_000_000;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
-    use prohelion::wavesculptor;
+    use phln::wavesculptor;
 
     use super::*;
 
