@@ -29,6 +29,10 @@ The following will run the integration tests.
 cargo test --test integration
 ```
 
+# TODO  
+This example writes log messages to the SD card whenever it writes a CAN frame to itself, and when it receives it.  
+The SD card code needs to go to the Telemetry Board's firmware whenever thats ready
+
 ## References
 
 - [Real-Time Interrupt-driven Concurrency Framework](https://rtic.rs/1/)

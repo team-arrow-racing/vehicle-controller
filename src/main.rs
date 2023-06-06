@@ -24,12 +24,21 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Frame, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
+use embedded_hal::{
+    spi::{Mode, Phase, Polarity}
+};
+
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
-    pac::CAN1,
+    gpio::{Alternate, Output, PushPull, OpenDrain, PA4, PA5, PA6, PA7, PA11, PA12, PB13},
+    pac::{CAN1, SPI1},
     prelude::*,
     watchdog::IndependentWatchdog,
+    spi::Spi,
+};
+
+use embedded_sdmmc::{
+    Controller, SdMmcSpi, TimeSource, Timestamp
 };
 
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
@@ -44,6 +53,37 @@ mod lighting;
 use horn::{Horn, HornMessageFormat};
 use lighting::Lamps;
 use phln::wavesculptor::WaveSculptor;
+
+/// SPI mode
+pub const MODE: Mode = Mode {
+    phase: Phase::CaptureOnFirstTransition,
+    polarity: Polarity::IdleLow,
+};
+
+use core::marker::PhantomData;
+
+struct TimeSink {
+    _marker: PhantomData<*const ()>,
+}
+
+impl TimeSink {
+    fn new() -> Self {
+        TimeSink { _marker: PhantomData}
+    }
+}
+
+impl TimeSource for TimeSink {
+    fn get_timestamp(&self) -> Timestamp {
+        Timestamp{
+            year_since_1970: 0,
+            zero_indexed_month: 0,
+            zero_indexed_day: 0,
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+        }
+    }
+}
 
 /// Message format identifier
 #[repr(u8)]
@@ -77,14 +117,14 @@ pub const PGN_HORN_MESSAGE: Number = Number {
     extended_data_page: false,
 };
 
-// TODO store last time we received a message
-
+const FILE_TO_WRITE: &str = "LOGS.TXT";
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
     use phln::wavesculptor;
+    use stm32l4xx_hal::gpio::PA5;
 
     use super::*;
 
@@ -114,6 +154,11 @@ mod app {
         watchdog: IndependentWatchdog,
         status_led: PB13<Output<PushPull>>,
         demo_light_data: u8,
+        spi_dev: SdMmcSpi<
+                        Spi<SPI1, (
+                            PA5<Alternate<PushPull, 5>>, PA6<Alternate<PushPull, 5>>, PA7<Alternate<PushPull, 5>>
+                        )>,
+                        PA4<Output<OpenDrain>>>,
     }
 
     #[init]
@@ -161,7 +206,8 @@ mod app {
                 cx.device.CAN1,
                 (tx, rx),
             ))
-            .set_bit_timing(0x001c_0009); // 500kbit/s
+            .set_bit_timing(0x001c_0009)
+            .set_loopback(true); // 500kbit/s
 
             let mut can = can.enable();
 
@@ -236,6 +282,34 @@ mod app {
 
         let demo_light_data = 1;
 
+        // Configure SPI
+        let sck = gpioa
+            .pa5
+            .into_alternate(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+
+        let miso = gpioa
+            .pa6
+            .into_alternate(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+
+        let mosi = gpioa
+            .pa7
+            .into_alternate(&mut gpioa.moder, &mut gpioa.otyper, &mut gpioa.afrl);
+
+        let spi = Spi::spi1(
+            cx.device.SPI1,
+            (sck, miso, mosi),
+            MODE,
+            16.MHz(),
+            clocks,
+            &mut rcc.apb2
+        );
+
+        let spi_cs_pin = gpioa
+            .pa4
+            .into_open_drain_output(&mut gpioa.moder, &mut gpioa.otyper);
+
+        let spi_dev = SdMmcSpi::new(spi, spi_cs_pin);
+
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
@@ -261,6 +335,7 @@ mod app {
                 watchdog,
                 status_led,
                 demo_light_data,
+                spi_dev
             },
             init::Monotonics(mono),
         )
@@ -319,6 +394,53 @@ mod app {
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
+    #[task(priority = 1, local = [spi_dev])]
+    fn sd_card_write(mut cx: sd_card_write::Context, data: &'static [u8]) {
+        let time_sink: TimeSink = TimeSink::new();
+
+        let mut sdmmc_controller = Controller::new(cx.local.spi_dev.acquire().unwrap(), time_sink);
+
+        let mut volume = match sdmmc_controller.get_volume(embedded_sdmmc::VolumeIdx(0)) {
+            Ok(volume) => volume,
+            Err(e) => {
+                panic!("Error getting volume 0");
+            },
+        };
+
+        let root_dir = match sdmmc_controller.open_root_dir(&volume) {
+            Ok(root_dir) => root_dir,
+            Err(e) => {
+                panic!("Error getting root directory on volume 0");
+            },
+        };
+
+        match sdmmc_controller.device().card_size_bytes() {
+            Ok(size) => defmt::debug!( "Card size: {}", size),
+            Err(e) => defmt::debug!("Error reading card size"),
+        }
+
+        let file = sdmmc_controller.open_file_in_dir(&mut volume, &root_dir, FILE_TO_WRITE, embedded_sdmmc::Mode::ReadWriteCreateOrAppend);
+        let mut file = match file {
+            Ok(file) => file,
+            Err(e) => {
+                defmt::debug!("Error creating 'example.txt'");
+                defmt::panic!("Error creating 'example.txt'");
+            },
+        };
+
+        // loop {
+            let bytes_written = match sdmmc_controller.write(&mut volume, &mut file, data) {
+                Ok(bytes_written) => bytes_written,
+                Err(e) => {
+                    panic!("Error writing to 'example.txt' {:?}", e);
+                }
+            };
+            defmt::debug!("Bytes written: {}", bytes_written);
+            // sdmmc_controller.close_file(&volume, file).unwrap();
+            // sdmmc_controller.close_dir(&volume, root_dir);
+        // }
+    }
+
     #[task(priority = 1, shared = [can])]
     fn feed_watchdog(mut cx: feed_watchdog::Context) {
         defmt::trace!("task: aic_comms");
@@ -349,8 +471,8 @@ mod app {
     #[task(priority = 1, shared = [can], local = [demo_light_data])]
     fn demo_lighting(mut cx: demo_lighting::Context) {
         defmt::trace!("task: writing a lighting frame");
+        sd_card_write::spawn(b"task: writing a lighting frame\n").unwrap();
 
-        // let test_frame = Frame::new_data(ExtendedId::new(id.to_bits()).unwrap(), *cx.local.demo_light_data);
         let test_frame =
             com::lighting::message(DEVICE, *cx.local.demo_light_data);
 
@@ -441,6 +563,11 @@ mod app {
         match frame.data() {
             Some(bytes) => {
                 let bytes_int = bytes[0]; // TODO confirm data is just in first index
+                // let sd_data = format_bytes!(b"received lighting frame data {:?}", bytes);
+                sd_card_write::spawn(b"received lighting frame data ").unwrap();
+                // sd_card_write::spawn(bytes).unwrap();
+                sd_card_write::spawn(b"\n").unwrap();
+
                 match com::lighting::LampsState::from_bits(bytes_int) {
                     Some(data) => {
                         lamps.set_state(data);
