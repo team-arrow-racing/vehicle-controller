@@ -24,9 +24,7 @@ use panic_probe as _;
 use bxcan::{filter::Mask32, Frame, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
-use embedded_hal::{
-    spi::{Mode, Phase, Polarity}
-};
+use embedded_hal::spi::{Mode, Phase, Polarity};
 
 use stm32l4xx_hal::{
     can::Can,
@@ -398,19 +396,32 @@ mod app {
     fn sd_card_write(mut cx: sd_card_write::Context, data: &'static [u8]) {
         let time_sink: TimeSink = TimeSink::new();
 
-        let mut sdmmc_controller = Controller::new(cx.local.spi_dev.acquire().unwrap(), time_sink);
+        let spi_dev = match cx.local.spi_dev.acquire() {
+            Ok(spi_dev) => {
+                defmt::debug!("Got spi dev");
+                spi_dev
+            },
+            Err(e) => {
+                defmt::debug!("Error getting SPI device");
+                panic!("Error");
+            },
+        };
+
+        let mut sdmmc_controller = Controller::new(spi_dev, time_sink);
 
         let mut volume = match sdmmc_controller.get_volume(embedded_sdmmc::VolumeIdx(0)) {
             Ok(volume) => volume,
             Err(e) => {
-                panic!("Error getting volume 0");
+                defmt::debug!("Error getting volume 0");
+                panic!("Error");
             },
         };
 
         let root_dir = match sdmmc_controller.open_root_dir(&volume) {
             Ok(root_dir) => root_dir,
             Err(e) => {
-                panic!("Error getting root directory on volume 0");
+                defmt::debug!("Error getting root directory on volume 0");
+                panic!("Error");
             },
         };
 
@@ -428,17 +439,15 @@ mod app {
             },
         };
 
-        // loop {
-            let bytes_written = match sdmmc_controller.write(&mut volume, &mut file, data) {
-                Ok(bytes_written) => bytes_written,
-                Err(e) => {
-                    panic!("Error writing to 'example.txt' {:?}", e);
-                }
-            };
-            defmt::debug!("Bytes written: {}", bytes_written);
-            // sdmmc_controller.close_file(&volume, file).unwrap();
-            // sdmmc_controller.close_dir(&volume, root_dir);
-        // }
+        let bytes_written = match sdmmc_controller.write(&mut volume, &mut file, data) {
+            Ok(bytes_written) => bytes_written,
+            Err(e) => {
+                defmt::debug!("Error writing to file");
+                panic!("Error writing to 'example.txt' {:?}", e);
+            }
+        };
+        defmt::debug!("Bytes written: {}", bytes_written);
+
     }
 
     #[task(priority = 1, shared = [can])]
@@ -475,7 +484,7 @@ mod app {
 
         let test_frame =
             com::lighting::message(DEVICE, *cx.local.demo_light_data);
-
+        
         cx.shared.can.lock(|can| {
             let _ = can.transmit(&test_frame);
             *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
@@ -564,9 +573,8 @@ mod app {
             Some(bytes) => {
                 let bytes_int = bytes[0]; // TODO confirm data is just in first index
                 // let sd_data = format_bytes!(b"received lighting frame data {:?}", bytes);
-                sd_card_write::spawn(b"received lighting frame data ").unwrap();
+                sd_card_write::spawn(b"received lighting frame data\n").unwrap();
                 // sd_card_write::spawn(bytes).unwrap();
-                sd_card_write::spawn(b"\n").unwrap();
 
                 match com::lighting::LampsState::from_bits(bytes_int) {
                     Some(data) => {

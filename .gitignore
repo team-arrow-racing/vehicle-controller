@@ -2,6 +2,8 @@
 debug/
 target/
 
+*.lock
+
 # rustfmt
 **/*.rs.bk
 
