@@ -41,13 +41,16 @@ impl Lamps {
     // Set the state of a specific lamp
     pub fn set_lamp_state(&mut self, lamp: LampsState, state: bool) {
         match lamp {
-            LampsState::INDICATOR_LEFT | LampsState::INDICATOR_RIGHT | 
-                LampsState::HAZARD | LampsState::DAYTIME | LampsState::STOP => {
+            LampsState::INDICATOR_LEFT
+             | LampsState::INDICATOR_RIGHT
+             | LampsState::HAZARD
+             | LampsState::DAYTIME
+             | LampsState::STOP => {
                 self.state.set(lamp, state);
-            },
+            }
             _ => {
                 self.state = LampsState::empty();
-            },
+            }
         }
     }
 
