@@ -38,35 +38,22 @@ impl Lamps {
         }
     }
 
-    /// Set left indicator state
-    pub fn set_left_indicator(&mut self, state: bool) {
-        self.state.set(LampsState::INDICATOR_LEFT, state);
+    // Set the state of a specific lamp
+    pub fn set_lamp_state(&mut self, lamp: LampsState, state: bool) {
+        match lamp {
+            LampsState::INDICATOR_LEFT
+             | LampsState::INDICATOR_RIGHT
+             | LampsState::HAZARD
+             | LampsState::DAYTIME
+             | LampsState::STOP => {
+                self.state.set(lamp, state);
+            }
+            _ => {
+                self.state = LampsState::empty();
+            }
+        }
     }
 
-    /// Set right indicator state
-    pub fn set_right_indicator(&mut self, state: bool) {
-        self.state.set(LampsState::INDICATOR_RIGHT, state);
-    }
-
-    /// Set hazard lights state
-    pub fn set_hazards(&mut self, state: bool) {
-        self.state.set(LampsState::HAZARD, state);
-    }
-
-    /// Set the daytime running lights state
-    pub fn set_daytime(&mut self, state: bool) {
-        self.state.set(LampsState::DAYTIME, state);
-    }
-
-    /// Set the stop light state
-    pub fn set_stop(&mut self, state: bool) {
-        self.state.set(LampsState::STOP, state);
-    }
-
-    /// Turn all of the lights off
-    pub fn all_off(&mut self) {
-        self.state = LampsState::empty();
-    }
 
     pub fn set_state(&mut self, state: LampsState) {
         // self.state = LampsState { bits: state };
@@ -87,7 +74,7 @@ impl Lamps {
         let time = monotonic::now();
 
         // 50% duty cycle waveform
-        let on = (time.duration_since_epoch().to_millis() % 1000) > 500;
+        let on: bool = (time.duration_since_epoch().to_millis() % 1000) > 500;
 
         self.left_pin.set_state(PinState::from(
             self.state.contains(LampsState::INDICATOR_LEFT) && on,
