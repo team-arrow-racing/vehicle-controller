@@ -26,7 +26,19 @@ use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, PA11, PA12, PB13},
+    gpio::{Alternate, Output, PushPull, 
+        PA4,
+        PA9, // LIN TX
+        PA10, // LIN RX
+        PA11, // CAN RX
+        PA12, // CAN TX
+        PB4, // STATUS LED
+        PB6, // SWITCH 1
+        PB7, // SWITCH 2
+        PB8, // SWITCH 3
+        PB9, // SWITCH 4
+        PB13
+    },
     pac::CAN1,
     prelude::*,
     watchdog::IndependentWatchdog,
@@ -93,14 +105,11 @@ mod app {
     pub type Duration = fugit::TimerDuration<u64, SYSCLK>;
     pub type Instant = fugit::TimerInstant<u64, SYSCLK>;
 
+    type Can1Pins = (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>);
+
     #[shared]
     struct Shared {
-        can: bxcan::Can<
-            Can<
-                CAN1,
-                (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>),
-            >,
-        >,
+        can: bxcan::Can<Can<CAN1,Can1Pins>>,
         horn: Horn,
         lamps: Lamps,
         mppt_a: Mppt,
@@ -112,7 +121,7 @@ mod app {
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
-        status_led: PB13<Output<PushPull>>,
+        status_led: PB4<Output<PushPull>>,
         demo_light_data: u8,
     }
 
@@ -140,7 +149,7 @@ mod app {
 
         // configure status led
         let status_led = gpiob
-            .pb13
+            .pb4
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
         // configure can bus
