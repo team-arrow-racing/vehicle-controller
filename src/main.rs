@@ -51,9 +51,10 @@ use solar_car::{
 };
 mod horn;
 mod state;
-use state::State;
 mod lighting;
-use horn::{Horn, HornMessageFormat};
+
+use state::State;
+use horn::Horn;
 use lighting::Lamps;
 use phln::wavesculptor::WaveSculptor;
 
@@ -78,13 +79,6 @@ pub enum VCUMessageFormat {
 pub const PGN_MESSAGE_TEST: Number = Number {
     specific: device::Device::VehicleController as u8,
     format: VCUMessageFormat::Enable as u8,
-    data_page: false,
-    extended_data_page: false,
-};
-
-pub const PGN_HORN_MESSAGE: Number = Number {
-    specific: device::Device::VehicleController as u8,
-    format: HornMessageFormat::Enable as u8,
     data_page: false,
     extended_data_page: false,
 };
@@ -423,7 +417,7 @@ mod app {
                         .shared
                         .lamps
                         .lock(|lamps| handle_lighting_frame(lamps, &frame)),
-                    PGN_HORN_MESSAGE => defmt::debug!("honk"),
+                    com::horn::PGN_HORN_MESSAGE => defmt::debug!("honk"),
                     _ => {
                         defmt::debug!("whut happun")
                     }
