@@ -273,7 +273,7 @@ mod app {
         let dma_channels = cx.device.DMA1.split(&mut rcc.ahb1);
         // Heapless boxes also work very well as buffers for DMA transfers
         let transfer = Transfer::from_adc(
-            adc,
+            adc,    
             dma_channels.1,
             MEMORY,
             DmaMode::Oneshot,
@@ -353,7 +353,7 @@ mod app {
 
     #[task(priority = 1, local = [watchdog], shared = [lamps, horn])]
     fn run(mut cx: run::Context) {
-        defmt::trace!("task: run");
+        // defmt::trace!("task: run");
 
         cx.local.watchdog.feed();
 
@@ -504,12 +504,10 @@ mod app {
 
     #[task(priority = 2, local = [adc, adc_pin])]
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
-        defmt::trace!("testing if this function is called");
-
         let mut adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
         defmt::trace!("{}", adc_value);
 
-        read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
+        read_adc_pin::spawn_after(Duration::millis(50)).unwrap();
 
     }
 
