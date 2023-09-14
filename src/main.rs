@@ -37,9 +37,13 @@ use stm32l4xx_hal::{
         PB7, // SWITCH 2
         PB8, // SWITCH 3
         PB9, // SWITCH 4
-        PB13
+        PB13,
+        PC1, // ADC IN
     },
     pac::CAN1,
+    adc::{DmaMode, SampleTime, Sequence, ADC},
+    delay::DelayCM,
+    dma::{dma1, RxDma, Transfer, W},
     prelude::*,
     watchdog::IndependentWatchdog,
 };
@@ -87,10 +91,12 @@ pub const PGN_MESSAGE_TEST: Number = Number {
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
+const SEQUENCE_LEN: usize = 3;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
     use phln::wavesculptor;
+    use stm32l4xx_hal::gpio::Analog;
 
     use super::*;
 
@@ -117,6 +123,8 @@ mod app {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
         demo_light_data: u8,
+        adc: ADC,
+        adc_pin: PC1<Analog>,
     }
 
     #[init]
@@ -129,6 +137,7 @@ mod app {
         let mut pwr = cx.device.PWR.constrain(&mut rcc.apb1r1);
         let mut gpioa = cx.device.GPIOA.split(&mut rcc.ahb2);
         let mut gpiob = cx.device.GPIOB.split(&mut rcc.ahb2);
+        let mut gpioc = cx.device.GPIOC.split(&mut rcc.ahb2);
 
         // configure system clock
         let clocks = rcc.cfgr.sysclk(80.MHz()).freeze(&mut flash.acr, &mut pwr);
@@ -239,6 +248,39 @@ mod app {
 
         let demo_light_data = 1;
 
+        // Configure ADC
+        let mut delay = DelayCM::new(clocks);
+        let mut adc = ADC::new(
+            cx.device.ADC1,
+            cx.device.ADC_COMMON,
+            &mut rcc.ahb2,
+            &mut rcc.ccipr,
+            &mut delay,
+        );
+        let mut adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        
+        /*
+        let mut temp_pin = adc.enable_temperature(&mut delay);
+        adc.configure_sequence(
+            &mut temp_pin,
+            Sequence::One,
+            SampleTime::Cycles12_5,
+        );
+        let MEMORY = {
+            static mut MEMORY: [u16; SEQUENCE_LEN] = [0u16; SEQUENCE_LEN];
+            unsafe { &mut MEMORY }
+        };
+        let dma_channels = cx.device.DMA1.split(&mut rcc.ahb1);
+        // Heapless boxes also work very well as buffers for DMA transfers
+        let transfer = Transfer::from_adc(
+            adc,    
+            dma_channels.1,
+            MEMORY,
+            DmaMode::Oneshot,
+            true,
+        );
+         */
+
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
@@ -246,6 +288,8 @@ mod app {
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
         demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
+
+        read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -264,6 +308,8 @@ mod app {
                 watchdog,
                 status_led,
                 demo_light_data,
+                adc,
+                adc_pin,
             },
             init::Monotonics(mono),
         )
@@ -307,7 +353,7 @@ mod app {
 
     #[task(priority = 1, local = [watchdog], shared = [lamps, horn])]
     fn run(mut cx: run::Context) {
-        defmt::trace!("task: run");
+        // defmt::trace!("task: run");
 
         cx.local.watchdog.feed();
 
@@ -454,6 +500,15 @@ mod app {
             }
             _ => {}
         }
+    }
+
+    #[task(priority = 2, local = [adc, adc_pin])]
+    fn read_adc_pin(mut cx: read_adc_pin::Context) {
+        let mut adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
+        defmt::trace!("{}", adc_value);
+
+        read_adc_pin::spawn_after(Duration::millis(50)).unwrap();
+
     }
 
     #[idle]
