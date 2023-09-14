@@ -247,6 +247,8 @@ mod app {
 
         demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
 
+        init_mppts::spawn().unwrap();
+
         // start main loop
         run::spawn().unwrap();
 
@@ -305,7 +307,7 @@ mod app {
         });
     }
 
-    #[task(priority = 1, local = [watchdog], shared = [lamps, horn])]
+    #[task(priority = 1, local = [watchdog], shared = [can, lamps, horn, ws22])]
     fn run(mut cx: run::Context) {
         defmt::trace!("task: run");
 
@@ -319,6 +321,22 @@ mod app {
             horn.run();
         });
 
+        // send can frames to steering wheel
+        cx.shared.can.lock(|can| {
+            cx.shared.ws22.lock(|ws22| {
+                nb::block!(
+                    can.transmit(&com::wavesculptor::speed_message(DEVICE, ws22.status().vehicle_velocity.unwrap()))
+                ).unwrap();
+                
+                nb::block!(
+                    can.transmit(&com::wavesculptor::battery_message(DEVICE, ws22.status().bus_voltage.unwrap()))
+                ).unwrap();
+                nb::block!(
+                    can.transmit(&com::wavesculptor::temperature_message(DEVICE, ws22.status().motor_temperature.unwrap()))
+                ).unwrap();
+            });
+        });
+    
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
@@ -385,7 +403,7 @@ mod app {
         can_receive::spawn().unwrap();
     }
 
-    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b])]
+    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b, ws22])]
     fn can_receive(mut cx: can_receive::Context) {
         defmt::trace!("task: can receive");
 
@@ -397,12 +415,21 @@ mod app {
             };
 
             let id = match frame.id() {
-                Id::Standard(_) => {
-                    cx.shared.mppt_a.lock(|mppt_a| {
-                        cx.shared.mppt_b.lock(|mppt_b| {
-                            handle_mppt_frame(&frame, mppt_a, mppt_b)
-                        })
+                Id::Standard(id) => {
+                    // Check if its a wavesculptor frame
+                    cx.shared.ws22.lock(|ws22| {
+                        if id.as_raw() >= ws22.base_id() {
+                            let _res = ws22.receive(frame);
+                        } else {
+                            // must be MPPT frame, handle accordingly
+                            cx.shared.mppt_a.lock(|mppt_a| {
+                                cx.shared.mppt_b.lock(|mppt_b| {
+                                    handle_mppt_frame(&frame, mppt_a, mppt_b)
+                                })
+                            });
+                        }
                     });
+
                     continue; // go to next frame
                 }
                 Id::Extended(id) => id,
