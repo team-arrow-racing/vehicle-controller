@@ -61,6 +61,7 @@ use state::State;
 use horn::Horn;
 use lighting::Lamps;
 use phln::wavesculptor::WaveSculptor;
+use phln::driver_controls::DriverControls;
 
 /// Message format identifier
 #[repr(u8)]
@@ -96,6 +97,7 @@ const SEQUENCE_LEN: usize = 3;
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
     use phln::wavesculptor;
+    use phln::driver_controls;
     use stm32l4xx_hal::gpio::Analog;
 
     use super::*;
@@ -115,6 +117,7 @@ mod app {
         mppt_a: Mppt,
         mppt_b: Mppt,
         ws22: WaveSculptor,
+        driver_controls: DriverControls,
         state: State,
     }
 
@@ -208,6 +211,8 @@ mod app {
 
         let ws22 = WaveSculptor::new(wavesculptor::ID_BASE);
 
+        let driver_controls = DriverControls::new(driver_controls::ID_BASE_DEFAULT);
+
         // configure horn
         let horn_output = gpiob
             .pb12
@@ -250,14 +255,14 @@ mod app {
 
         // Configure ADC
         let mut delay = DelayCM::new(clocks);
-        let mut adc = ADC::new(
+        let adc = ADC::new(
             cx.device.ADC1,
             cx.device.ADC_COMMON,
             &mut rcc.ahb2,
             &mut rcc.ccipr,
             &mut delay,
         );
-        let mut adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        let adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
@@ -267,7 +272,7 @@ mod app {
 
         demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
 
-        init_mppts::spawn().unwrap();
+        // init_mppts::spawn().unwrap();
 
         read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
 
@@ -282,6 +287,7 @@ mod app {
                 mppt_a,
                 mppt_b,
                 ws22,
+                driver_controls,
                 state,
             },
             Local {
@@ -348,16 +354,17 @@ mod app {
         // send can frames to steering wheel
         cx.shared.can.lock(|can| {
             cx.shared.ws22.lock(|ws22| {
-                nb::block!(
-                    can.transmit(&com::wavesculptor::speed_message(DEVICE, ws22.status().vehicle_velocity.unwrap()))
-                ).unwrap();
-                
-                nb::block!(
-                    can.transmit(&com::wavesculptor::battery_message(DEVICE, ws22.status().bus_voltage.unwrap()))
-                ).unwrap();
-                nb::block!(
-                    can.transmit(&com::wavesculptor::temperature_message(DEVICE, ws22.status().motor_temperature.unwrap()))
-                ).unwrap();
+                if let Some(velocity) = ws22.status().vehicle_velocity {
+                    nb::block!(can.transmit(&com::wavesculptor::speed_message(DEVICE, velocity))).unwrap();
+                }
+
+                if let Some(voltage) = ws22.status().bus_voltage {
+                    nb::block!(can.transmit(&com::wavesculptor::battery_message(DEVICE, voltage))).unwrap();
+                }
+
+                if let Some(temp) = ws22.status().motor_temperature {
+                    nb::block!(can.transmit(&com::wavesculptor::temperature_message(DEVICE, temp))).unwrap();
+                }
             });
         });
     
@@ -442,14 +449,14 @@ mod app {
                 Id::Standard(id) => {
                     // Check if its a wavesculptor frame
                     cx.shared.ws22.lock(|ws22| {
-                        if id.as_raw() >= ws22.base_id() {
+                        if id.as_raw() >= wavesculptor::ID_BASE {
                             let _res = ws22.receive(frame);
                         } else {
                             // must be MPPT frame, handle accordingly
                             cx.shared.mppt_a.lock(|mppt_a| {
                                 cx.shared.mppt_b.lock(|mppt_b| {
                                     handle_mppt_frame(&frame, mppt_a, mppt_b)
-                                })
+                                });
                             });
                         }
                     });
@@ -507,13 +514,19 @@ mod app {
         }
     }
 
-    #[task(priority = 2, local = [adc, adc_pin])]
+    #[task(priority = 2, shared=[can, driver_controls], local = [adc, adc_pin])]
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
-        let mut adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
-        defmt::trace!("{}", adc_value);
+        let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
+
+        cx.shared.can.lock(|can| {
+            cx.shared.driver_controls.lock(|dc| {
+                let percentage = adc_value / 2048;
+                let frame = dc.motor_drive(130f32, percentage as f32);
+                let _ = can.transmit(&frame);
+            })
+        });
 
         read_adc_pin::spawn_after(Duration::millis(50)).unwrap();
-
     }
 
     #[idle]
