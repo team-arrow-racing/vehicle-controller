@@ -26,7 +26,7 @@ use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Alternate, Output, PushPull, 
+    gpio::{Analog, Alternate, Output, PushPull, 
         PA4,
         PA9, // LIN TX
         PA10, // LIN RX
@@ -98,8 +98,6 @@ const SEQUENCE_LEN: usize = 3;
 mod app {
     use phln::wavesculptor;
     use phln::driver_controls;
-    use stm32l4xx_hal::gpio::Analog;
-
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
@@ -192,7 +190,7 @@ mod app {
             nb::block!(can.enable_non_blocking()).unwrap();
 
             // broadcast startup message.
-            can.transmit(&com::startup::message(DEVICE)).unwrap();
+            nb::block!(can.transmit(&com::startup::message(DEVICE))).unwrap();
 
             can
         };
@@ -272,7 +270,7 @@ mod app {
 
         demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
 
-        // init_mppts::spawn().unwrap();
+        init_mppts::spawn().unwrap();
 
         read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
 
@@ -303,7 +301,7 @@ mod app {
 
     #[task(shared = [can, mppt_a, mppt_b])]
     fn init_mppts(mut cx: init_mppts::Context) {
-        defmt::debug!("task: init_mppts");
+        defmt::trace!("task: init_mppts");
 
         const MAX_VOLTAGE: f32 = 60.0;
         const MAX_CURRENT: f32 = 7.0;
@@ -320,6 +318,7 @@ mod app {
                     can.transmit(&mppt.set_maximum_input_current(MAX_CURRENT))
                 )
                 .unwrap();
+                defmt::debug!("task: init mppt a complete");
             });
 
             cx.shared.mppt_b.lock(|mppt| {
@@ -333,6 +332,7 @@ mod app {
                     can.transmit(&mppt.set_maximum_input_current(MAX_CURRENT))
                 )
                 .unwrap();
+                defmt::debug!("task: init mppt b complete");
             });
         });
     }
@@ -373,10 +373,10 @@ mod app {
 
     #[task(priority = 1, shared = [can])]
     fn feed_watchdog(mut cx: feed_watchdog::Context) {
-        defmt::trace!("task: aic_comms");
+        defmt::trace!("task: feed_watchdog");
 
         cx.shared.can.lock(|can| {
-            let _ = can.transmit(&com::array::feed_watchdog(DEVICE));
+            nb::block!(can.transmit(&com::array::feed_watchdog(DEVICE))).unwrap();
         });
 
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
@@ -391,7 +391,7 @@ mod app {
 
         if cx.local.status_led.is_set_low() {
             cx.shared.can.lock(|can| {
-                let _ = can.transmit(&com::heartbeat::message(DEVICE));
+                nb::block!(can.transmit(&com::heartbeat::message(DEVICE))).unwrap();
             });
         }
 
@@ -407,7 +407,7 @@ mod app {
             com::lighting::message(DEVICE, *cx.local.demo_light_data);
 
         cx.shared.can.lock(|can| {
-            let _ = can.transmit(&test_frame);
+            nb::block!(can.transmit(&test_frame)).unwrap();
             *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
 
             if *cx.local.demo_light_data == 0b10000 {
@@ -421,7 +421,7 @@ mod app {
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(_: can_rx0_pending::Context) {
-        defmt::trace!("task: can rx0 pending");
+        // defmt::trace!("task: can rx0 pending");
 
         can_receive::spawn().unwrap();
     }
@@ -429,14 +429,14 @@ mod app {
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX1)]
     fn can_rx1_pending(_: can_rx1_pending::Context) {
-        defmt::trace!("task: can rx1 pending");
+        // defmt::trace!("task: can rx1 pending");
 
         can_receive::spawn().unwrap();
     }
 
     #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b, ws22])]
     fn can_receive(mut cx: can_receive::Context) {
-        defmt::trace!("task: can receive");
+        // defmt::trace!("task: can receive");
 
         cx.shared.can.lock(|can| loop {
             let frame = match can.receive() {
@@ -522,7 +522,7 @@ mod app {
             cx.shared.driver_controls.lock(|dc| {
                 let percentage = adc_value / 2048;
                 let frame = dc.motor_drive(130f32, percentage as f32);
-                let _ = can.transmit(&frame);
+                nb::block!(can.transmit(&frame)).unwrap();
             })
         });
 
