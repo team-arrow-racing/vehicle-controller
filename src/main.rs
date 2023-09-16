@@ -174,6 +174,7 @@ mod app {
                 cx.device.CAN1,
                 (tx, rx),
             ))
+            .set_loopback(true)
             .set_bit_timing(0x001c_0009); // 500kbit/s
 
             let mut can = can.enable();
@@ -270,7 +271,7 @@ mod app {
 
         demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
 
-        init_mppts::spawn().unwrap();
+        // init_mppts::spawn().unwrap();
 
         read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
 
@@ -343,27 +344,30 @@ mod app {
 
         cx.local.watchdog.feed();
 
-        cx.shared.lamps.lock(|lamps| {
-            lamps.run();
-        });
+        // cx.shared.lamps.lock(|lamps| {
+        //     lamps.run();
+        // });
 
-        cx.shared.horn.lock(|horn| {
-            horn.run();
-        });
+        // cx.shared.horn.lock(|horn| {
+        //     horn.run();
+        // });
 
         // send can frames to steering wheel
         cx.shared.can.lock(|can| {
             cx.shared.ws22.lock(|ws22| {
                 if let Some(velocity) = ws22.status().vehicle_velocity {
-                    nb::block!(can.transmit(&com::wavesculptor::speed_message(DEVICE, velocity))).unwrap();
+                    defmt::debug!("vel {:?}", velocity);
+                    // nb::block!(can.transmit(&com::wavesculptor::speed_message(DEVICE, velocity))).unwrap();
                 }
 
                 if let Some(voltage) = ws22.status().bus_voltage {
-                    nb::block!(can.transmit(&com::wavesculptor::battery_message(DEVICE, voltage))).unwrap();
+                    defmt::debug!("vel {:?}", voltage);
+                    // nb::block!(can.transmit(&com::wavesculptor::battery_message(DEVICE, voltage))).unwrap();
                 }
 
                 if let Some(temp) = ws22.status().motor_temperature {
-                    nb::block!(can.transmit(&com::wavesculptor::temperature_message(DEVICE, temp))).unwrap();
+                    defmt::debug!("tmp {:?}", temp);
+                    // nb::block!(can.transmit(&com::wavesculptor::temperature_message(DEVICE, temp))).unwrap();
                 }
             });
         });
@@ -398,7 +402,7 @@ mod app {
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
     }
 
-    #[task(priority = 1, shared = [can], local = [demo_light_data])]
+    #[task(priority = 1, shared = [can, driver_controls], local = [demo_light_data])]
     fn demo_lighting(mut cx: demo_lighting::Context) {
         defmt::trace!("task: writing a lighting frame");
 
@@ -407,15 +411,20 @@ mod app {
             com::lighting::message(DEVICE, *cx.local.demo_light_data);
 
         cx.shared.can.lock(|can| {
-            nb::block!(can.transmit(&test_frame)).unwrap();
-            *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
+            // nb::block!(can.transmit(&test_frame)).unwrap();
+            // *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
 
-            if *cx.local.demo_light_data == 0b10000 {
-                *cx.local.demo_light_data = 1;
-            }
+            // if *cx.local.demo_light_data == 0b10000 {
+            //     *cx.local.demo_light_data = 1;
+            // }
+
+            cx.shared.driver_controls.lock(|dc| {
+                let frame = dc.motor_drive(130f32, 0.7);
+                nb::block!(can.transmit(&frame)).unwrap();
+            });
         });
 
-        demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
+        demo_lighting::spawn_after(Duration::millis(200)).unwrap();
     }
 
     /// Triggers on RX mailbox event.
@@ -448,6 +457,10 @@ mod app {
             let id = match frame.id() {
                 Id::Standard(id) => {
                     // Check if its a wavesculptor frame
+                    // if id.as_raw() >= 0x400 {
+                        defmt::debug!("FRAME: {:?} {:?}", id.as_raw(), frame);
+                    // }
+                    
                     cx.shared.ws22.lock(|ws22| {
                         if id.as_raw() >= wavesculptor::ID_BASE {
                             let _res = ws22.receive(frame);
@@ -520,7 +533,9 @@ mod app {
 
         cx.shared.can.lock(|can| {
             cx.shared.driver_controls.lock(|dc| {
+               
                 let percentage = adc_value / 2048;
+                // defmt::debug!("{:?} {:?}", adc_value, percentage);
                 let frame = dc.motor_drive(130f32, percentage as f32);
                 nb::block!(can.transmit(&frame)).unwrap();
             })
