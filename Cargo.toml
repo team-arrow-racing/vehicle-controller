@@ -24,13 +24,13 @@ dwt-systick-monotonic = { version = "1.1.0", features = ["extend"] }
 
 [dependencies.solar-car]
 version = "0.1.1"
-# git = "https://github.com/team-arrow-racing/solar-car-common"
-path = "../solar-car-common" # for local development
+git = "https://github.com/team-arrow-racing/solar-car-common"
+# path = "../solar-car-common" # for local development
 
 [dependencies.phln]
 version = "0.1.0"
-# git = "https://github.com/team-arrow-racing/phln-rs"
-path = "../phln-rs" # for local development
+git = "https://github.com/team-arrow-racing/phln-rs"
+# path = "../phln-rs" # for local development
 
 [dev-dependencies]
 defmt-test = "0.3"
