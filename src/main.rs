@@ -41,14 +41,13 @@ use stm32l4xx_hal::{
         PC1, // ADC IN
     },
     pac::CAN1,
-    adc::{DmaMode, SampleTime, Sequence, ADC},
-    delay::DelayCM,
-    dma::{dma1, RxDma, Transfer, W},
     prelude::*,
     watchdog::IndependentWatchdog,
 };
 
-use elmar_mppt::{Mppt, ID_BASE, ID_INC};
+use rand::{Rng, SeedableRng};
+use rand::rngs::SmallRng;
+
 use solar_car::{
     com, device, j1939,
     j1939::pgn::{Number, Pgn},
@@ -57,9 +56,6 @@ mod horn;
 mod state;
 mod lighting;
 
-use state::State;
-use horn::Horn;
-use lighting::Lamps;
 use phln::wavesculptor::WaveSculptor;
 use phln::driver_controls::DriverControls;
 
@@ -92,7 +88,6 @@ pub const PGN_MESSAGE_TEST: Number = Number {
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
-const SEQUENCE_LEN: usize = 3;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
@@ -110,13 +105,8 @@ mod app {
     #[shared]
     struct Shared {
         can: bxcan::Can<Can<CAN1,Can1Pins>>,
-        horn: Horn,
-        lamps: Lamps,
-        mppt_a: Mppt,
-        mppt_b: Mppt,
         ws22: WaveSculptor,
         driver_controls: DriverControls,
-        state: State,
     }
 
     #[local]
@@ -124,8 +114,6 @@ mod app {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
         demo_light_data: u8,
-        adc: ADC,
-        adc_pin: PC1<Analog>,
     }
 
     #[init]
@@ -205,63 +193,11 @@ mod app {
             wd
         };
 
-        let mppt_a = Mppt::new(ID_BASE);
-        let mppt_b = Mppt::new(ID_BASE + ID_INC);
-
         let ws22 = WaveSculptor::new(wavesculptor::ID_BASE);
 
         let driver_controls = DriverControls::new(driver_controls::ID_BASE_DEFAULT);
 
-        // configure horn
-        let horn_output = gpiob
-            .pb12
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
-            .erase();
-
-        let horn = Horn::new(horn_output);
-
-        // configure lighting
-        let left_light_output = gpiob
-            .pb14 // TODO figure out actual pin
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
-            .erase();
-
-        let right_light_output = gpiob
-            .pb15 // TODO figure out actual pin
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
-            .erase();
-
-        let day_light_output = gpiob
-            .pb10 // TODO figure out actual pin
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
-            .erase();
-
-        let brake_light_output = gpiob
-            .pb11
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
-            .erase();
-
-        let lamps = Lamps::new(
-            left_light_output,
-            right_light_output,
-            day_light_output,
-            brake_light_output,
-        );
-
-        let state = State::new();
-
         let demo_light_data = 1;
-
-        // Configure ADC
-        let mut delay = DelayCM::new(clocks);
-        let adc = ADC::new(
-            cx.device.ADC1,
-            cx.device.ADC_COMMON,
-            &mut rcc.ahb2,
-            &mut rcc.ccipr,
-            &mut delay,
-        );
-        let adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
@@ -269,110 +205,49 @@ mod app {
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
-        demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
-
-        // init_mppts::spawn().unwrap();
-
-        read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
-
         // start main loop
         run::spawn().unwrap();
+
+        sim_ws::spawn().unwrap();
 
         (
             Shared {
                 can,
-                horn,
-                lamps,
-                mppt_a,
-                mppt_b,
                 ws22,
                 driver_controls,
-                state,
             },
             Local {
                 watchdog,
                 status_led,
-                demo_light_data,
-                adc,
-                adc_pin,
+                demo_light_data
             },
             init::Monotonics(mono),
         )
     }
 
-    #[task(shared = [can, mppt_a, mppt_b])]
-    fn init_mppts(mut cx: init_mppts::Context) {
-        defmt::trace!("task: init_mppts");
-
-        const MAX_VOLTAGE: f32 = 60.0;
-        const MAX_CURRENT: f32 = 7.0;
-
-        cx.shared.can.lock(|can| {
-            cx.shared.mppt_a.lock(|mppt| {
-                nb::block!(can.transmit(&mppt.set_mode(elmar_mppt::Mode::On)))
-                    .unwrap();
-                nb::block!(
-                    can.transmit(&mppt.set_maximum_output_voltage(MAX_VOLTAGE))
-                )
-                .unwrap();
-                nb::block!(
-                    can.transmit(&mppt.set_maximum_input_current(MAX_CURRENT))
-                )
-                .unwrap();
-                defmt::debug!("task: init mppt a complete");
-            });
-
-            cx.shared.mppt_b.lock(|mppt| {
-                nb::block!(can.transmit(&mppt.set_mode(elmar_mppt::Mode::On)))
-                    .unwrap();
-                nb::block!(
-                    can.transmit(&mppt.set_maximum_output_voltage(MAX_VOLTAGE))
-                )
-                .unwrap();
-                nb::block!(
-                    can.transmit(&mppt.set_maximum_input_current(MAX_CURRENT))
-                )
-                .unwrap();
-                defmt::debug!("task: init mppt b complete");
-            });
-        });
-    }
-
-    #[task(priority = 1, local = [watchdog], shared = [can, lamps, horn, ws22])]
+    #[task(priority = 1, local = [watchdog])]
     fn run(mut cx: run::Context) {
-        // defmt::trace!("task: run");
+        defmt::trace!("task: run");
 
         cx.local.watchdog.feed();
-
-        // cx.shared.lamps.lock(|lamps| {
-        //     lamps.run();
-        // });
-
-        // cx.shared.horn.lock(|horn| {
-        //     horn.run();
-        // });
-
-        // send can frames to steering wheel
-        cx.shared.can.lock(|can| {
-            cx.shared.ws22.lock(|ws22| {
-                if let Some(velocity) = ws22.status().vehicle_velocity {
-                    defmt::debug!("vel {:?}", velocity);
-                    // nb::block!(can.transmit(&com::wavesculptor::speed_message(DEVICE, velocity))).unwrap();
-                }
-
-                if let Some(voltage) = ws22.status().bus_voltage {
-                    defmt::debug!("vel {:?}", voltage);
-                    // nb::block!(can.transmit(&com::wavesculptor::battery_message(DEVICE, voltage))).unwrap();
-                }
-
-                if let Some(temp) = ws22.status().motor_temperature {
-                    defmt::debug!("tmp {:?}", temp);
-                    // nb::block!(can.transmit(&com::wavesculptor::temperature_message(DEVICE, temp))).unwrap();
-                }
-            });
-        });
     
         run::spawn_after(Duration::millis(10)).unwrap();
+    }
+
+    // Simulate a wavesculptor message
+    #[task(priority = 2, shared=[can])]
+    fn sim_ws(mut cx: sim_ws::Context) {
+        cx.shared.can.lock(|can| {
+            let mut small_rng = SmallRng::seed_from_u64(90u64);
+            let vel: f32 = small_rng.gen_range(0..100) as f32;
+
+            nb::block!(
+                can.transmit(&com::wavesculptor::speed_message(DEVICE, vel))
+            )
+            .unwrap();
+
+        });
+        sim_ws::spawn_after(Duration::millis(500)).unwrap();
     }
 
     #[task(priority = 1, shared = [can])]
@@ -402,31 +277,6 @@ mod app {
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
     }
 
-    #[task(priority = 1, shared = [can, driver_controls], local = [demo_light_data])]
-    fn demo_lighting(mut cx: demo_lighting::Context) {
-        defmt::trace!("task: writing a lighting frame");
-
-        // let test_frame = Frame::new_data(ExtendedId::new(id.to_bits()).unwrap(), *cx.local.demo_light_data);
-        let test_frame =
-            com::lighting::message(DEVICE, *cx.local.demo_light_data);
-
-        cx.shared.can.lock(|can| {
-            // nb::block!(can.transmit(&test_frame)).unwrap();
-            // *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
-
-            // if *cx.local.demo_light_data == 0b10000 {
-            //     *cx.local.demo_light_data = 1;
-            // }
-
-            cx.shared.driver_controls.lock(|dc| {
-                let frame = dc.motor_drive(130f32, 0.7);
-                nb::block!(can.transmit(&frame)).unwrap();
-            });
-        });
-
-        demo_lighting::spawn_after(Duration::millis(200)).unwrap();
-    }
-
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(_: can_rx0_pending::Context) {
@@ -443,7 +293,7 @@ mod app {
         can_receive::spawn().unwrap();
     }
 
-    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b, ws22])]
+    #[task(priority = 2, shared = [can])]
     fn can_receive(mut cx: can_receive::Context) {
         // defmt::trace!("task: can receive");
 
@@ -456,92 +306,16 @@ mod app {
 
             let id = match frame.id() {
                 Id::Standard(id) => {
-                    // Check if its a wavesculptor frame
-                    // if id.as_raw() >= 0x400 {
-                        defmt::debug!("FRAME: {:?} {:?}", id.as_raw(), frame);
-                    // }
-                    
-                    cx.shared.ws22.lock(|ws22| {
-                        if id.as_raw() >= wavesculptor::ID_BASE {
-                            let _res = ws22.receive(frame);
-                        } else {
-                            // must be MPPT frame, handle accordingly
-                            cx.shared.mppt_a.lock(|mppt_a| {
-                                cx.shared.mppt_b.lock(|mppt_b| {
-                                    handle_mppt_frame(&frame, mppt_a, mppt_b)
-                                });
-                            });
-                        }
-                    });
-
-                    continue; // go to next frame
+                    defmt::debug!("STD FRAME: {:?} {:?}", id.as_raw(), frame);
+                    continue;
                 }
                 Id::Extended(id) => id,
             };
 
             let id: j1939::ExtendedId = id.into();
 
-            match id.pgn {
-                Pgn::Destination(pgn) => match pgn {
-                    PGN_MESSAGE_TEST => defmt::debug!("aur naur"),
-                    com::lighting::PGN_LIGHTING_STATE => cx
-                        .shared
-                        .lamps
-                        .lock(|lamps| handle_lighting_frame(lamps, &frame)),
-                    com::horn::PGN_HORN_MESSAGE => defmt::debug!("honk"),
-                    _ => {
-                        defmt::debug!("whut happun")
-                    }
-                },
-                _ => {} // ignore broadcast messages
-            }
+            defmt::debug!("EXT FRAME: {:?} {:?}", id.to_bits(), frame);
         });
-    }
-
-    fn handle_mppt_frame(frame: &Frame, mppt_a: &mut Mppt, mppt_b: &mut Mppt) {
-        match mppt_a.receive(&frame) {
-            Ok(_) => {}
-            Err(e) => defmt::error!("{=str}", e),
-        };
-
-        match mppt_b.receive(&frame) {
-            Ok(_) => {}
-            Err(e) => defmt::error!("{=str}", e),
-        };
-    }
-
-    fn handle_lighting_frame(lamps: &mut Lamps, frame: &Frame) {
-        defmt::debug!("received lighting frame data {:?}", frame.data());
-        match frame.data() {
-            Some(bytes) => {
-                let bytes_int = bytes[0]; // TODO confirm data is just in first index
-                match com::lighting::LampsState::from_bits(bytes_int) {
-                    Some(data) => {
-                        lamps.set_state(data);
-                        lamps.run();
-                    }
-                    _ => defmt::debug!("Got invalid lighting data"),
-                }
-            }
-            _ => {}
-        }
-    }
-
-    #[task(priority = 2, shared=[can, driver_controls], local = [adc, adc_pin])]
-    fn read_adc_pin(mut cx: read_adc_pin::Context) {
-        let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
-
-        cx.shared.can.lock(|can| {
-            cx.shared.driver_controls.lock(|dc| {
-               
-                let percentage = adc_value / 2048;
-                // defmt::debug!("{:?} {:?}", adc_value, percentage);
-                let frame = dc.motor_drive(130f32, percentage as f32);
-                nb::block!(can.transmit(&frame)).unwrap();
-            })
-        });
-
-        read_adc_pin::spawn_after(Duration::millis(50)).unwrap();
     }
 
     #[idle]
