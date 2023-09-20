@@ -171,12 +171,11 @@ mod app {
             can.enable_interrupts(
                 Interrupts::TRANSMIT_MAILBOX_EMPTY
                     | Interrupts::FIFO0_MESSAGE_PENDING
-                    | Interrupts::FIFO1_MESSAGE_PENDING,
             );
             nb::block!(can.enable_non_blocking()).unwrap();
 
             // broadcast startup message.
-            nb::block!(can.transmit(&com::startup::message(DEVICE))).unwrap();
+            can.transmit(&com::startup::message(DEVICE)).unwrap();
 
             can
         };
@@ -214,7 +213,7 @@ mod app {
     }
 
     #[task(priority = 1, local = [watchdog])]
-    fn run(mut cx: run::Context) {
+    fn run(cx: run::Context) {
         defmt::trace!("task: run");
 
         cx.local.watchdog.feed();
@@ -229,11 +228,7 @@ mod app {
             let mut small_rng = SmallRng::seed_from_u64(90u64);
             let vel: f32 = small_rng.gen_range(0..100) as f32;
 
-            nb::block!(
-                can.transmit(&com::wavesculptor::speed_message(DEVICE, vel))
-            )
-            .unwrap();
-
+            let _ = can.transmit(&com::wavesculptor::speed_message(DEVICE, vel));
         });
         sim_ws::spawn_after(Duration::millis(500)).unwrap();
     }
@@ -243,7 +238,7 @@ mod app {
         defmt::trace!("task: feed_watchdog");
 
         cx.shared.can.lock(|can| {
-            nb::block!(can.transmit(&com::array::feed_watchdog(DEVICE))).unwrap();
+            let _ = can.transmit(&com::array::feed_watchdog(DEVICE)).unwrap();
         });
 
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
@@ -258,7 +253,7 @@ mod app {
 
         if cx.local.status_led.is_set_low() {
             cx.shared.can.lock(|can| {
-                nb::block!(can.transmit(&com::heartbeat::message(DEVICE))).unwrap();
+                let _ = can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
             });
         }
 
@@ -266,44 +261,41 @@ mod app {
     }
 
     /// Triggers on RX mailbox event.
-    #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
-    fn can_rx0_pending(_: can_rx0_pending::Context) {
-        // defmt::trace!("task: can rx0 pending");
+    #[task(priority = 2, shared = [can], binds = CAN1_RX0)]
+    fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
+        defmt::trace!("task: can rx0 pending");
 
-        can_receive::spawn().unwrap();
+        cx.shared.can.lock(|can| match can.receive() {
+            Ok(frame) => can_receive::spawn(frame).unwrap(),
+            _ => {}
+        })
     }
 
     /// Triggers on RX mailbox event.
-    #[task(priority = 1, shared = [can], binds = CAN1_RX1)]
-    fn can_rx1_pending(_: can_rx1_pending::Context) {
-        // defmt::trace!("task: can rx1 pending");
+    #[task(priority = 2, shared = [can], binds = CAN1_RX1)]
+    fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
+        defmt::trace!("task: can rx1 pending");
 
-        can_receive::spawn().unwrap();
+        cx.shared.can.lock(|can| match can.receive() {
+            Ok(frame) => can_receive::spawn(frame).unwrap(),
+            _ => {}
+        })
     }
 
-    #[task(priority = 2, shared = [can])]
-    fn can_receive(mut cx: can_receive::Context) {
+    #[task(priority = 1, capacity=100)]
+    fn can_receive(_: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
+        let id = match frame.id() {
+            Id::Standard(id) => {
+                defmt::trace!("STD FRAME: {:?} {:?}", id.as_raw(), frame);
+                return;
+            }
+            Id::Extended(id) => id,
+        };
 
-        cx.shared.can.lock(|can| loop {
-            let frame = match can.receive() {
-                Ok(frame) => frame,
-                Err(nb::Error::WouldBlock) => break, // done
-                Err(nb::Error::Other(_)) => continue, // go to next frame
-            };
+        let id: j1939::ExtendedId = id.into();
 
-            let id = match frame.id() {
-                Id::Standard(id) => {
-                    defmt::debug!("STD FRAME: {:?} {:?}", id.as_raw(), frame);
-                    continue;
-                }
-                Id::Extended(id) => id,
-            };
-
-            let id: j1939::ExtendedId = id.into();
-
-            defmt::debug!("EXT FRAME: {:?} {:?}", id.to_bits(), frame);
-        });
+        defmt::trace!("EXT FRAME: {:?} {:?}", id.to_bits(), frame);
     }
 
     #[idle]
