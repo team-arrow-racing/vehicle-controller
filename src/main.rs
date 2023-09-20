@@ -105,15 +105,12 @@ mod app {
     #[shared]
     struct Shared {
         can: bxcan::Can<Can<CAN1,Can1Pins>>,
-        ws22: WaveSculptor,
-        driver_controls: DriverControls,
     }
 
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
-        demo_light_data: u8,
     }
 
     #[init]
@@ -193,12 +190,6 @@ mod app {
             wd
         };
 
-        let ws22 = WaveSculptor::new(wavesculptor::ID_BASE);
-
-        let driver_controls = DriverControls::new(driver_controls::ID_BASE_DEFAULT);
-
-        let demo_light_data = 1;
-
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
@@ -213,13 +204,10 @@ mod app {
         (
             Shared {
                 can,
-                ws22,
-                driver_controls,
             },
             Local {
                 watchdog,
                 status_led,
-                demo_light_data
             },
             init::Monotonics(mono),
         )
