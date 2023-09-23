@@ -21,11 +21,12 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Frame, Id, Interrupts};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
     can::Can,
+    device::CAN1,
+    flash::FlashExt,
     gpio::{Analog, Alternate, Output, PushPull, 
         PA4,
         PA9, // LIN TX
@@ -40,24 +41,14 @@ use stm32l4xx_hal::{
         PB13,
         PC1, // ADC IN
     },
-    pac::CAN1,
     prelude::*,
     watchdog::IndependentWatchdog,
 };
-
-use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
 
 use solar_car::{
     com, device, j1939,
     j1939::pgn::{Number, Pgn},
 };
-mod horn;
-mod state;
-mod lighting;
-
-use phln::wavesculptor::WaveSculptor;
-use phln::driver_controls::DriverControls;
 
 /// Message format identifier
 #[repr(u8)]
@@ -91,8 +82,8 @@ const SYSCLK: u32 = 80_000_000;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
-    use phln::wavesculptor;
-    use phln::driver_controls;
+    use bxcan::{filter::Mask32, Frame, Id, Interrupts};
+
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
@@ -126,7 +117,13 @@ mod app {
         let mut gpioc = cx.device.GPIOC.split(&mut rcc.ahb2);
 
         // configure system clock
-        let clocks = rcc.cfgr.sysclk(80.MHz()).freeze(&mut flash.acr, &mut pwr);
+        let clocks = rcc
+            .cfgr
+            .sysclk(80.MHz())
+            .pclk1(80.MHz())
+            .pclk2(80.MHz())
+            .freeze(&mut flash.acr, &mut pwr);
+
 
         // configure monotonic time
         let mono = DwtSystick::new(
@@ -159,7 +156,6 @@ mod app {
                 cx.device.CAN1,
                 (tx, rx),
             ))
-            .set_loopback(true)
             .set_bit_timing(0x001c_0009); // 500kbit/s
 
             let mut can = can.enable();
@@ -171,11 +167,12 @@ mod app {
             can.enable_interrupts(
                 Interrupts::TRANSMIT_MAILBOX_EMPTY
                     | Interrupts::FIFO0_MESSAGE_PENDING
+                    // | Interrupts::FIFO1_MESSAGE_PENDING,
             );
             nb::block!(can.enable_non_blocking()).unwrap();
 
             // broadcast startup message.
-            can.transmit(&com::startup::message(DEVICE)).unwrap();
+            nb::block!(can.transmit(&com::startup::message(DEVICE))).unwrap();
 
             can
         };
@@ -190,15 +187,14 @@ mod app {
         };
 
         // start heartbeat task
-        heartbeat::spawn_after(Duration::millis(1000)).unwrap();
-
         // start comms with aic
-        feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
+        // feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
+        heartbeat::spawn_after(Duration::millis(500)).unwrap();
 
-        sim_ws::spawn().unwrap();
+        // sim_ws::spawn().unwrap();
 
         (
             Shared {
@@ -221,31 +217,8 @@ mod app {
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
-    // Simulate a wavesculptor message
-    #[task(priority = 2, shared=[can])]
-    fn sim_ws(mut cx: sim_ws::Context) {
-        cx.shared.can.lock(|can| {
-            let mut small_rng = SmallRng::seed_from_u64(90u64);
-            let vel: f32 = small_rng.gen_range(0..100) as f32;
-
-            let _ = can.transmit(&com::wavesculptor::speed_message(DEVICE, vel));
-        });
-        sim_ws::spawn_after(Duration::millis(500)).unwrap();
-    }
-
-    #[task(priority = 1, shared = [can])]
-    fn feed_watchdog(mut cx: feed_watchdog::Context) {
-        defmt::trace!("task: feed_watchdog");
-
-        cx.shared.can.lock(|can| {
-            let _ = can.transmit(&com::array::feed_watchdog(DEVICE)).unwrap();
-        });
-
-        feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
-    }
-
     /// Live, laugh, love
-    #[task(priority = 1, shared = [can], local = [status_led])]
+    #[task(shared = [can], local=[status_led])]
     fn heartbeat(mut cx: heartbeat::Context) {
         defmt::trace!("task: heartbeat");
 
@@ -283,29 +256,26 @@ mod app {
     }
 
     #[task(priority = 1, capacity=100)]
-    fn can_receive(_: can_receive::Context, frame: Frame) {
-        // defmt::trace!("task: can receive");
-        let id = match frame.id() {
+    fn can_receive(mut cx: can_receive::Context, frame: Frame) {
+        defmt::trace!("task: can receive");
+        match frame.id() {
             Id::Standard(id) => {
-                defmt::trace!("STD FRAME: {:?} {:?}", id.as_raw(), frame);
-                return;
+                defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
             }
-            Id::Extended(id) => id,
-        };
-
-        let id: j1939::ExtendedId = id.into();
-
-        defmt::trace!("EXT FRAME: {:?} {:?}", id.to_bits(), frame);
-    }
-
-    #[idle]
-    fn idle(_: idle::Context) -> ! {
-        defmt::trace!("task: idle");
-
-        loop {
-            cortex_m::asm::nop();
+            Id::Extended(id) => {
+                defmt::debug!("EXT FRAME: {:#06x} {:?}", id.as_raw(), frame);
+            } // not used
         }
     }
+
+    // #[idle]
+    // fn idle(_: idle::Context) -> ! {
+    //     defmt::trace!("task: idle");
+
+    //     loop {
+    //         cortex_m::asm::nop();
+    //     }
+    // }
 }
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message

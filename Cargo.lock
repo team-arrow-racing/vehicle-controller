@@ -64,6 +64,7 @@ checksum = "4b13b4b2ea9ab2ba924063ebb86ad895cb79f4a79bf90f27949eb20c335b30f9"
 dependencies = [
  "bitflags",
  "defmt",
+ "embedded-can",
  "nb 1.1.0",
  "vcell",
 ]
@@ -176,7 +177,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 2.0.32",
+ "syn 2.0.37",
 ]
 
 [[package]]
@@ -199,29 +200,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "defmt-test"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4df24f1ca104a0c1bce2047d8a21aa9fa29695e5d662118eb48daedb97edca88"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "defmt",
- "defmt-test-macros",
-]
-
-[[package]]
-name = "defmt-test-macros"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a0dfea4063d72e1ba20494dfbc4667f67420869328cf3670b5824a38a22dc1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "dwt-systick-monotonic"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -234,14 +212,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "elmar-mppt"
-version = "0.1.1"
+name = "embedded-can"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1710cfebccd55fc8459095ff299115c14db600e537f4a3a14cd9e2272a8f99d4"
+checksum = "12719661dce6080d174aa0a9df1f61756022dc105c1761bcd37091a0ee5de635"
 dependencies = [
- "bitflags",
- "bxcan",
- "defmt",
+ "nb 1.1.0",
 ]
 
 [[package]]
@@ -356,24 +332,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
-name = "num-complex"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ba157ca0885411de85d6ca030ba7e2a83a28636056c7c699b07c8b6f7383214"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
-name = "num-traits"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f30b0abd723be7e2ffca1272140fac1a2f084c77ec3e123c192b66af1ee9e6c2"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
 name = "packed_struct"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -405,16 +363,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "phln"
-version = "0.1.0"
-source = "git+https://github.com/team-arrow-racing/phln-rs#9823a8023176d8f55ae8396b9247b37df2e4c9a7"
-dependencies = [
- "bitflags",
- "bxcan",
- "num-complex",
-]
-
-[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -440,9 +388,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.66"
+version = "1.0.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18fb31db3f9bddb2ea821cde30a9f70117e3f119938b5ee630b7403aa6e2ead9"
+checksum = "3d433d9f1a3e8c1263d9456598b16fec66f4acc9a74dacffd35c7bb09b3a1328"
 dependencies = [
  "unicode-ident",
 ]
@@ -461,15 +409,6 @@ name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
-
-[[package]]
-name = "rand"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
-dependencies = [
- "rand_core",
-]
 
 [[package]]
 name = "rand_core"
@@ -549,7 +488,6 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "solar-car"
 version = "0.1.1"
-source = "git+https://github.com/team-arrow-racing/solar-car-common#60db793736b6fbb62f54f90f8850292f8027ca32"
 dependencies = [
  "bitflags",
  "bxcan",
@@ -617,9 +555,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.32"
+version = "2.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "239814284fd6f1a4ffe4ca893952cdd93c224b6a1571c9a9eadd670295c0c9e2"
+checksum = "7303ef2c05cd654186cb250d29049a24840ca25d2747c25c0381c8d9e2f582e8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -649,14 +587,14 @@ checksum = "49922ecae66cc8a249b77e68d1d0623c1b2c514f0060c27cdc68bd62a1219d35"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.32",
+ "syn 2.0.37",
 ]
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "301abaae475aa91687eb82514b328ab47a211a533026cb25fc3e519b86adfc3c"
+checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
 name = "vcell"
@@ -668,22 +606,15 @@ checksum = "77439c1b53d2303b20d9459b1ade71a83c716e3f9c34f3228c00e6f185d6c002"
 name = "vehicle-controller"
 version = "0.1.0"
 dependencies = [
- "bitflags",
  "bxcan",
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-rtic",
  "defmt",
  "defmt-rtt",
- "defmt-test",
  "dwt-systick-monotonic",
- "elmar-mppt",
- "embedded-hal",
- "heapless",
  "nb 1.1.0",
  "panic-probe",
- "phln",
- "rand",
  "solar-car",
  "stm32l4xx-hal",
 ]
