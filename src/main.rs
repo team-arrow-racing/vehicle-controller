@@ -115,7 +115,8 @@ mod app {
         mppt_a: Mppt,
         mppt_b: Mppt,
         ws22: WaveSculptor,
-        driver_controls: DriverControls,
+        cruise: com::wavesculptor::ControlTypes,
+        mode: com::wavesculptor::DriverModes,
         state: State,
     }
 
@@ -126,6 +127,7 @@ mod app {
         demo_light_data: u8,
         adc: ADC,
         adc_pin: PC1<Analog>,
+        driver_controls: DriverControls,
     }
 
     #[init]
@@ -269,8 +271,6 @@ mod app {
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
-        demo_lighting::spawn_after(Duration::millis(1000)).unwrap();
-
         // init_mppts::spawn().unwrap();
 
         read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
@@ -286,7 +286,8 @@ mod app {
                 mppt_a,
                 mppt_b,
                 ws22,
-                driver_controls,
+                cruise: com::wavesculptor::ControlTypes::Torque,
+                mode: com::wavesculptor::DriverModes::Neutral,
                 state,
             },
             Local {
@@ -295,6 +296,7 @@ mod app {
                 demo_light_data,
                 adc,
                 adc_pin,
+                driver_controls,
             },
             init::Monotonics(mono),
         )
@@ -402,31 +404,6 @@ mod app {
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
     }
 
-    #[task(priority = 1, shared = [can, driver_controls], local = [demo_light_data])]
-    fn demo_lighting(mut cx: demo_lighting::Context) {
-        defmt::trace!("task: writing a lighting frame");
-
-        // let test_frame = Frame::new_data(ExtendedId::new(id.to_bits()).unwrap(), *cx.local.demo_light_data);
-        let test_frame =
-            com::lighting::message(DEVICE, *cx.local.demo_light_data);
-
-        cx.shared.can.lock(|can| {
-            // nb::block!(can.transmit(&test_frame)).unwrap();
-            // *cx.local.demo_light_data = *cx.local.demo_light_data << 1;
-
-            // if *cx.local.demo_light_data == 0b10000 {
-            //     *cx.local.demo_light_data = 1;
-            // }
-
-            cx.shared.driver_controls.lock(|dc| {
-                let frame = dc.motor_drive(130f32, 0.7);
-                nb::block!(can.transmit(&frame)).unwrap();
-            });
-        });
-
-        demo_lighting::spawn_after(Duration::millis(200)).unwrap();
-    }
-
     /// Triggers on RX mailbox event.
     #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
     fn can_rx0_pending(_: can_rx0_pending::Context) {
@@ -443,7 +420,7 @@ mod app {
         can_receive::spawn().unwrap();
     }
 
-    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b, ws22])]
+    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b, ws22, cruise, mode])]
     fn can_receive(mut cx: can_receive::Context) {
         // defmt::trace!("task: can receive");
 
@@ -489,6 +466,20 @@ mod app {
                         .lamps
                         .lock(|lamps| handle_lighting_frame(lamps, &frame)),
                     com::horn::PGN_HORN_MESSAGE => defmt::debug!("honk"),
+                    com::wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
+                        cx.shared.cruise.lock(|cruise| {
+                            if let Some(data) = frame.data() {
+                                *cruise = com::wavesculptor::ControlTypes::from(data[0]);
+                            }
+                        });
+                    },
+                    com::wavesculptor::PGN_SET_DRIVER_MODE => {
+                        cx.shared.mode.lock(|mode| {
+                            if let Some(data) = frame.data() {
+                                *mode = com::wavesculptor::DriverModes::from(data[0]);
+                            }
+                        });
+                    },
                     _ => {
                         defmt::debug!("whut happun")
                     }
@@ -527,21 +518,25 @@ mod app {
         }
     }
 
-    #[task(priority = 2, shared=[can, driver_controls], local = [adc, adc_pin])]
+    #[task(priority = 2, shared=[can, cruise, mode], local = [adc, adc_pin, driver_controls])]
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
         let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
+        let dc = cx.local.driver_controls;
 
-        cx.shared.can.lock(|can| {
-            cx.shared.driver_controls.lock(|dc| {
-               
-                let percentage = adc_value / 2048;
+        cx.shared.cruise.lock(|cruise| {
+            cx.shared.mode.lock(|mode| {
+                let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
+                let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
                 // defmt::debug!("{:?} {:?}", adc_value, percentage);
-                let frame = dc.motor_drive(130f32, percentage as f32);
-                nb::block!(can.transmit(&frame)).unwrap();
-            })
+                let frame = dc.motor_drive(rpms, percentage as f32);
+
+                cx.shared.can.lock(|can| {
+                    nb::block!(can.transmit(&frame)).unwrap();
+                });
+            });
         });
 
-        read_adc_pin::spawn_after(Duration::millis(50)).unwrap();
+        read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
     }
 
     #[idle]
