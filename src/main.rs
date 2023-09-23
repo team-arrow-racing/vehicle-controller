@@ -124,7 +124,6 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
-        demo_light_data: u8,
         adc: ADC,
         adc_pin: PC1<Analog>,
         driver_controls: DriverControls,
@@ -252,8 +251,6 @@ mod app {
 
         let state = State::new();
 
-        let demo_light_data = 1;
-
         // Configure ADC
         let mut delay = DelayCM::new(clocks);
         let adc = ADC::new(
@@ -293,7 +290,6 @@ mod app {
             Local {
                 watchdog,
                 status_led,
-                demo_light_data,
                 adc,
                 adc_pin,
                 driver_controls,
@@ -518,20 +514,36 @@ mod app {
         }
     }
 
-    #[task(priority = 2, shared=[can, cruise, mode], local = [adc, adc_pin, driver_controls])]
+    #[task(priority = 2, shared=[can, cruise, mode, ws22], local = [adc, adc_pin, driver_controls])]
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
         let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
         let dc = cx.local.driver_controls;
 
         cx.shared.cruise.lock(|cruise| {
             cx.shared.mode.lock(|mode| {
-                let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
-                let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
-                // defmt::debug!("{:?} {:?}", adc_value, percentage);
-                let frame = dc.motor_drive(rpms, percentage as f32);
+                cx.shared.ws22.lock(|ws22| {
+                    let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
+                    let current_rpms = ws22.status().motor_velocity.unwrap();
 
-                cx.shared.can.lock(|can| {
-                    nb::block!(can.transmit(&frame)).unwrap();
+                    let rpms = {
+                        
+                        if *mode == com::wavesculptor::DriverModes::Reverse {
+                            -20000f32
+                        } else {
+                            if *cruise == com::wavesculptor::ControlTypes::Cruise {current_rpms} else {20000f32}
+                        }
+                    };
+
+                    // let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
+                    
+                    // defmt::debug!("{:?} {:?}", adc_value, percentage);
+                    // TODO if in cruise, velocity should be fixed to desired speed
+                    // probably just retrieve the current speed from ws
+                    let frame = dc.motor_drive(rpms, percentage as f32);
+
+                    cx.shared.can.lock(|can| {
+                        nb::block!(can.transmit(&frame)).unwrap();
+                    });
                 });
             });
         });
