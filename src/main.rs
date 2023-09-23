@@ -42,7 +42,7 @@ use stm32l4xx_hal::{
     },
     pac::CAN1,
     adc::{DmaMode, SampleTime, Sequence, ADC},
-    delay::DelayCM,
+    delay::{Delay, DelayCM},
     dma::{dma1, RxDma, Transfer, W},
     prelude::*,
     watchdog::IndependentWatchdog,
@@ -124,8 +124,8 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
-        adc: ADC,
-        adc_pin: PC1<Analog>,
+        // adc: ADC,
+        // adc_pin: PC1<Analog>,
         driver_controls: DriverControls,
     }
 
@@ -175,7 +175,6 @@ mod app {
                 cx.device.CAN1,
                 (tx, rx),
             ))
-            .set_loopback(true)
             .set_bit_timing(0x001c_0009); // 500kbit/s
 
             let mut can = can.enable();
@@ -187,7 +186,7 @@ mod app {
             can.enable_interrupts(
                 Interrupts::TRANSMIT_MAILBOX_EMPTY
                     | Interrupts::FIFO0_MESSAGE_PENDING
-                    | Interrupts::FIFO1_MESSAGE_PENDING,
+                    // | Interrupts::FIFO1_MESSAGE_PENDING,
             );
             nb::block!(can.enable_non_blocking()).unwrap();
 
@@ -253,14 +252,14 @@ mod app {
 
         // Configure ADC
         let mut delay = DelayCM::new(clocks);
-        let adc = ADC::new(
-            cx.device.ADC1,
-            cx.device.ADC_COMMON,
-            &mut rcc.ahb2,
-            &mut rcc.ccipr,
-            &mut delay,
-        );
-        let adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        // let adc = ADC::new(
+        //     cx.device.ADC1,
+        //     cx.device.ADC_COMMON,
+        //     &mut rcc.ahb2,
+        //     &mut rcc.ccipr,
+        //     &mut delay,
+        // );
+        // let adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
@@ -270,7 +269,7 @@ mod app {
 
         // init_mppts::spawn().unwrap();
 
-        read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
+        // read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -290,8 +289,8 @@ mod app {
             Local {
                 watchdog,
                 status_led,
-                adc,
-                adc_pin,
+                // adc,
+                // adc_pin,
                 driver_controls,
             },
             init::Monotonics(mono),
@@ -400,89 +399,87 @@ mod app {
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
     }
 
-    /// Triggers on RX mailbox event.
-    #[task(priority = 1, shared = [can], binds = CAN1_RX0)]
-    fn can_rx0_pending(_: can_rx0_pending::Context) {
-        // defmt::trace!("task: can rx0 pending");
+    /// RX 0 interrupt pending handler.
+    #[task(priority = 2, shared = [can], binds = CAN1_RX0)]
+    fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
+        defmt::trace!("task: can rx0 pending");
 
-        can_receive::spawn().unwrap();
+        cx.shared.can.lock(|can| match can.receive() {
+            Ok(frame) => can_receive::spawn(frame).unwrap(),
+            _ => {}
+        })
     }
 
-    /// Triggers on RX mailbox event.
-    #[task(priority = 1, shared = [can], binds = CAN1_RX1)]
-    fn can_rx1_pending(_: can_rx1_pending::Context) {
-        // defmt::trace!("task: can rx1 pending");
+    /// RX 1 interrupt pending handler.
+    #[task(priority = 2, shared = [can], binds = CAN1_RX1)]
+    fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
+        defmt::trace!("task: can rx1 pending");
 
-        can_receive::spawn().unwrap();
+        cx.shared.can.lock(|can| match can.receive() {
+            Ok(frame) => can_receive::spawn(frame).unwrap(),
+            _ => {}
+        })
     }
 
-    #[task(priority = 2, shared = [can, lamps, mppt_a, mppt_b, ws22, cruise, mode])]
-    fn can_receive(mut cx: can_receive::Context) {
+    #[task(priority = 2, shared = [lamps, mppt_a, mppt_b, ws22, cruise, mode])]
+    fn can_receive(mut cx: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
 
-        cx.shared.can.lock(|can| loop {
-            let frame = match can.receive() {
-                Ok(frame) => frame,
-                Err(nb::Error::WouldBlock) => break, // done
-                Err(nb::Error::Other(_)) => continue, // go to next frame
-            };
-
-            let id = match frame.id() {
-                Id::Standard(id) => {
-                    // Check if its a wavesculptor frame
-                    // if id.as_raw() >= 0x400 {
-                        defmt::debug!("FRAME: {:?} {:?}", id.as_raw(), frame);
-                    // }
-                    
-                    cx.shared.ws22.lock(|ws22| {
-                        if id.as_raw() >= wavesculptor::ID_BASE {
-                            let _res = ws22.receive(frame);
-                        } else {
-                            // must be MPPT frame, handle accordingly
-                            cx.shared.mppt_a.lock(|mppt_a| {
-                                cx.shared.mppt_b.lock(|mppt_b| {
-                                    handle_mppt_frame(&frame, mppt_a, mppt_b)
-                                });
+        let id = match frame.id() {
+            Id::Standard(id) => {
+                defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
+                
+                cx.shared.ws22.lock(|ws22| {
+                    if id.as_raw() >= wavesculptor::ID_BASE {
+                        let _res = ws22.receive(frame);
+                    } else {
+                        // must be MPPT frame, handle accordingly
+                        cx.shared.mppt_a.lock(|mppt_a| {
+                            cx.shared.mppt_b.lock(|mppt_b| {
+                                handle_mppt_frame(&frame, mppt_a, mppt_b)
                             });
+                        });
+                    }
+                });
+                return;
+            }
+            Id::Extended(id) => id,
+        };
+
+        let id: j1939::ExtendedId = id.into();
+
+        defmt::debug!("EXT FRAME: {:#06x} {:?}", id.to_bits(), frame);
+
+        let id: j1939::ExtendedId = id.into();
+
+        match id.pgn {
+            Pgn::Destination(pgn) => match pgn {
+                PGN_MESSAGE_TEST => defmt::debug!("aur naur"),
+                com::lighting::PGN_LIGHTING_STATE => cx
+                    .shared
+                    .lamps
+                    .lock(|lamps| handle_lighting_frame(lamps, &frame)),
+                com::horn::PGN_HORN_MESSAGE => defmt::debug!("honk"),
+                com::wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
+                    cx.shared.cruise.lock(|cruise| {
+                        if let Some(data) = frame.data() {
+                            *cruise = com::wavesculptor::ControlTypes::from(data[0]);
                         }
                     });
-
-                    continue; // go to next frame
-                }
-                Id::Extended(id) => id,
-            };
-
-            let id: j1939::ExtendedId = id.into();
-
-            match id.pgn {
-                Pgn::Destination(pgn) => match pgn {
-                    PGN_MESSAGE_TEST => defmt::debug!("aur naur"),
-                    com::lighting::PGN_LIGHTING_STATE => cx
-                        .shared
-                        .lamps
-                        .lock(|lamps| handle_lighting_frame(lamps, &frame)),
-                    com::horn::PGN_HORN_MESSAGE => defmt::debug!("honk"),
-                    com::wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
-                        cx.shared.cruise.lock(|cruise| {
-                            if let Some(data) = frame.data() {
-                                *cruise = com::wavesculptor::ControlTypes::from(data[0]);
-                            }
-                        });
-                    },
-                    com::wavesculptor::PGN_SET_DRIVER_MODE => {
-                        cx.shared.mode.lock(|mode| {
-                            if let Some(data) = frame.data() {
-                                *mode = com::wavesculptor::DriverModes::from(data[0]);
-                            }
-                        });
-                    },
-                    _ => {
-                        defmt::debug!("whut happun")
-                    }
                 },
-                _ => {} // ignore broadcast messages
-            }
-        });
+                com::wavesculptor::PGN_SET_DRIVER_MODE => {
+                    cx.shared.mode.lock(|mode| {
+                        if let Some(data) = frame.data() {
+                            *mode = com::wavesculptor::DriverModes::from(data[0]);
+                        }
+                    });
+                },
+                _ => {
+                    defmt::debug!("whut happun")
+                }
+            },
+            _ => {} // ignore broadcast messages
+        }
     }
 
     fn handle_mppt_frame(frame: &Frame, mppt_a: &mut Mppt, mppt_b: &mut Mppt) {
@@ -514,51 +511,51 @@ mod app {
         }
     }
 
-    #[task(priority = 2, shared=[can, cruise, mode, ws22], local = [adc, adc_pin, driver_controls])]
-    fn read_adc_pin(mut cx: read_adc_pin::Context) {
-        let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
-        let dc = cx.local.driver_controls;
+    // #[task(priority = 2, shared=[can, cruise, mode, ws22], local = [adc, adc_pin, driver_controls])]
+    // fn read_adc_pin(mut cx: read_adc_pin::Context) {
+    //     let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
+    //     let dc = cx.local.driver_controls;
 
-        cx.shared.cruise.lock(|cruise| {
-            cx.shared.mode.lock(|mode| {
-                cx.shared.ws22.lock(|ws22| {
-                    let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
-                    let current_rpms = ws22.status().motor_velocity.unwrap();
+    //     cx.shared.cruise.lock(|cruise| {
+    //         cx.shared.mode.lock(|mode| {
+    //             cx.shared.ws22.lock(|ws22| {
+    //                 let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
+    //                 let current_rpms = ws22.status().motor_velocity.unwrap();
 
-                    let rpms = {
+    //                 let rpms = {
                         
-                        if *mode == com::wavesculptor::DriverModes::Reverse {
-                            -20000f32
-                        } else {
-                            if *cruise == com::wavesculptor::ControlTypes::Cruise {current_rpms} else {20000f32}
-                        }
-                    };
+    //                     if *mode == com::wavesculptor::DriverModes::Reverse {
+    //                         -20000f32
+    //                     } else {
+    //                         if *cruise == com::wavesculptor::ControlTypes::Cruise {current_rpms} else {20000f32}
+    //                     }
+    //                 };
 
-                    // let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
+    //                 // let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
                     
-                    // defmt::debug!("{:?} {:?}", adc_value, percentage);
-                    // TODO if in cruise, velocity should be fixed to desired speed
-                    // probably just retrieve the current speed from ws
-                    let frame = dc.motor_drive(rpms, percentage as f32);
+    //                 // defmt::debug!("{:?} {:?}", adc_value, percentage);
+    //                 // TODO if in cruise, velocity should be fixed to desired speed
+    //                 // probably just retrieve the current speed from ws
+    //                 let frame = dc.motor_drive(rpms, percentage as f32);
 
-                    cx.shared.can.lock(|can| {
-                        nb::block!(can.transmit(&frame)).unwrap();
-                    });
-                });
-            });
-        });
+    //                 cx.shared.can.lock(|can| {
+    //                     nb::block!(can.transmit(&frame)).unwrap();
+    //                 });
+    //             });
+    //         });
+    //     });
 
-        read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
-    }
+    //     read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
+    // }
 
-    #[idle]
-    fn idle(_: idle::Context) -> ! {
-        defmt::trace!("task: idle");
+    // #[idle]
+    // fn idle(_: idle::Context) -> ! {
+    //     defmt::trace!("task: idle");
 
-        loop {
-            cortex_m::asm::nop();
-        }
-    }
+    //     loop {
+    //         cortex_m::asm::nop();
+    //     }
+    // }
 }
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
