@@ -21,7 +21,7 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Frame, Id, Interrupts};
+use bxcan::{filter::Mask32, Frame, Id, Interrupts, StandardId};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
@@ -124,8 +124,8 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
-        // adc: ADC,
-        // adc_pin: PC1<Analog>,
+        adc: ADC,
+        adc_pin: PC1<Analog>,
         driver_controls: DriverControls,
     }
 
@@ -252,24 +252,25 @@ mod app {
 
         // Configure ADC
         let mut delay = DelayCM::new(clocks);
-        // let adc = ADC::new(
-        //     cx.device.ADC1,
-        //     cx.device.ADC_COMMON,
-        //     &mut rcc.ahb2,
-        //     &mut rcc.ccipr,
-        //     &mut delay,
-        // );
-        // let adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        let adc = ADC::new(
+            cx.device.ADC1,
+            cx.device.ADC_COMMON,
+            &mut rcc.ahb2,
+            &mut rcc.ccipr,
+            &mut delay,
+        );
+        let adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
 
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
-
+        feed_bms::spawn().unwrap();
+        // send_rpm::spawn_after(Duration::millis(5000)).unwrap();
         // init_mppts::spawn().unwrap();
 
-        // read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
+        read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
         run::spawn().unwrap();
@@ -289,8 +290,8 @@ mod app {
             Local {
                 watchdog,
                 status_led,
-                // adc,
-                // adc_pin,
+                adc,
+                adc_pin,
                 driver_controls,
             },
             init::Monotonics(mono),
@@ -376,9 +377,35 @@ mod app {
         cx.shared.can.lock(|can| {
             nb::block!(can.transmit(&com::array::feed_watchdog(DEVICE))).unwrap();
         });
-
+        
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
+
+    #[task(priority = 1, shared = [can])]
+    fn feed_bms(mut cx: feed_bms::Context) {
+        // TODO this should only happen when a switch on the dash is on
+        cx.shared.can.lock(|can| {
+            // Feed BMS watchdog
+            let bms_id = StandardId::new(0x505).unwrap();
+            let frame = Frame::new_data(bms_id, [0x70, 0, 0, 0, 0, 0, 0, 0]);
+            nb::block!(can.transmit(&frame)).unwrap();
+        });
+
+        feed_bms::spawn_after(Duration::millis(100)).unwrap();
+    }
+
+    // #[task(priority = 1, shared = [can], local=[driver_controls])]
+    // fn send_rpm(mut cx: send_rpm::Context) {
+    //     // TODO this should only happen when a switch on the dash is on
+    //     let dc = cx.local.driver_controls;
+    //     cx.shared.can.lock(|can| {
+    //         // Feed BMS watchdog
+    //         let frame = dc.motor_drive(100f32, 0.01f32);
+    //         nb::block!(can.transmit(&frame)).unwrap();
+    //     });
+
+    //     send_rpm::spawn_after(Duration::millis(200)).unwrap();
+    // }
 
     /// Live, laugh, love
     #[task(priority = 1, shared = [can], local = [status_led])]
@@ -418,7 +445,7 @@ mod app {
         })
     }
 
-    #[task(priority = 2, shared = [lamps, mppt_a, mppt_b, ws22, cruise, mode])]
+    #[task(priority = 2, shared = [lamps, mppt_a, mppt_b, ws22, cruise, mode], capacity=100)]
     fn can_receive(mut cx: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
 
@@ -508,42 +535,42 @@ mod app {
         }
     }
 
-    // #[task(priority = 2, shared=[can, cruise, mode, ws22], local = [adc, adc_pin, driver_controls])]
-    // fn read_adc_pin(mut cx: read_adc_pin::Context) {
-    //     let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
-    //     let dc = cx.local.driver_controls;
+    #[task(shared=[can, cruise, mode, ws22], local = [adc, adc_pin, driver_controls])]
+    fn read_adc_pin(mut cx: read_adc_pin::Context) {
+        let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
+        let dc = cx.local.driver_controls;
 
-    //     cx.shared.cruise.lock(|cruise| {
-    //         cx.shared.mode.lock(|mode| {
-    //             cx.shared.ws22.lock(|ws22| {
-    //                 let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
-    //                 let current_rpms = ws22.status().motor_velocity.unwrap();
+        cx.shared.cruise.lock(|cruise| {
+            cx.shared.mode.lock(|mode| {
+                cx.shared.ws22.lock(|ws22| {
+                    let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
+                    let current_rpms = ws22.status().motor_velocity.unwrap();
 
-    //                 let rpms = {
+                    let rpms = {
                         
-    //                     if *mode == com::wavesculptor::DriverModes::Reverse {
-    //                         -20000f32
-    //                     } else {
-    //                         if *cruise == com::wavesculptor::ControlTypes::Cruise {current_rpms} else {20000f32}
-    //                     }
-    //                 };
+                        if *mode == com::wavesculptor::DriverModes::Reverse {
+                            -630f32
+                        } else {
+                            if *cruise == com::wavesculptor::ControlTypes::Cruise {current_rpms} else {630f32}
+                        }
+                    };
 
-    //                 // let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
+                    // let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
                     
-    //                 // defmt::debug!("{:?} {:?}", adc_value, percentage);
-    //                 // TODO if in cruise, velocity should be fixed to desired speed
-    //                 // probably just retrieve the current speed from ws
-    //                 let frame = dc.motor_drive(rpms, percentage as f32);
+                    defmt::debug!("{:?} {:?}", adc_value, percentage);
+                    // TODO if in cruise, velocity should be fixed to desired speed
+                    // probably just retrieve the current speed from ws
+                    let frame = dc.motor_drive(rpms, percentage as f32);
 
-    //                 cx.shared.can.lock(|can| {
-    //                     nb::block!(can.transmit(&frame)).unwrap();
-    //                 });
-    //             });
-    //         });
-    //     });
+                    // cx.shared.can.lock(|can| {
+                    //     nb::block!(can.transmit(&frame)).unwrap();
+                    // });
+                });
+            });
+        });
 
-    //     read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
-    // }
+        read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
+    }
 
     // #[idle]
     // fn idle(_: idle::Context) -> ! {

@@ -407,7 +407,6 @@ dependencies = [
 [[package]]
 name = "phln"
 version = "0.1.0"
-source = "git+https://github.com/team-arrow-racing/phln-rs#9823a8023176d8f55ae8396b9247b37df2e4c9a7"
 dependencies = [
  "bitflags",
  "bxcan",
@@ -540,7 +539,6 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "solar-car"
 version = "0.1.1"
-source = "git+https://github.com/team-arrow-racing/solar-car-common#c4482219001d8427a52393353eb638fc1430c6a1"
 dependencies = [
  "bitflags",
  "bxcan",
