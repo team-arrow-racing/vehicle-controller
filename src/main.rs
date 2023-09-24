@@ -543,10 +543,24 @@ mod app {
         cx.shared.cruise.lock(|cruise| {
             cx.shared.mode.lock(|mode| {
                 cx.shared.ws22.lock(|ws22| {
-                    let percentage = if *cruise == com::wavesculptor::ControlTypes::Cruise {1} else {adc_value / 2048};
-                    let current_rpms = ws22.status().motor_velocity.unwrap();
+                    let percentage: f32 = {
+                        if *cruise == com::wavesculptor::ControlTypes::Cruise {
+                            1.0
+                        } else {
+                            if adc_value < 200 {
+                                0.0
+                            } else {
+                                (adc_value - 200) as f32 / 3700.0
+                            }
+                        }
+                    };
 
-                    let rpms = {
+                    let current_rpms = match ws22.status().motor_velocity {
+                        Some(rpms) => rpms,
+                        None => 630f32
+                    };
+
+                    let desired_rpms = {
                         
                         if *mode == com::wavesculptor::DriverModes::Reverse {
                             -630f32
@@ -554,17 +568,15 @@ mod app {
                             if *cruise == com::wavesculptor::ControlTypes::Cruise {current_rpms} else {630f32}
                         }
                     };
-
-                    // let rpms = if *mode == com::wavesculptor::DriverModes::Reverse {-20000f32} else {20000f32};
                     
                     defmt::debug!("{:?} {:?}", adc_value, percentage);
                     // TODO if in cruise, velocity should be fixed to desired speed
                     // probably just retrieve the current speed from ws
-                    let frame = dc.motor_drive(rpms, percentage as f32);
+                    let frame = dc.motor_drive(desired_rpms, percentage);
 
-                    // cx.shared.can.lock(|can| {
-                    //     nb::block!(can.transmit(&frame)).unwrap();
-                    // });
+                    cx.shared.can.lock(|can| {
+                        nb::block!(can.transmit(&frame)).unwrap();
+                    });
                 });
             });
         });
