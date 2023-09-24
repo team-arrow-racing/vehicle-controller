@@ -26,7 +26,7 @@ use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
     can::Can,
-    gpio::{Analog, Alternate, Output, PushPull, 
+    gpio::{Analog, Alternate, Input, Output, PullUp, PushPull, 
         PA4,
         PA9, // LIN TX
         PA10, // LIN RX
@@ -50,9 +50,17 @@ use stm32l4xx_hal::{
 
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
 use solar_car::{
-    com, device, j1939,
+    com::{self, 
+        wavesculptor::{
+            self,
+            DriverModes,
+            ControlTypes
+        }}, 
+    device, 
+    j1939,
     j1939::pgn::{Number, Pgn},
 };
+
 mod horn;
 mod state;
 mod lighting;
@@ -92,12 +100,11 @@ pub const PGN_MESSAGE_TEST: Number = Number {
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
-const SEQUENCE_LEN: usize = 3;
+const ADC_PEDAL_MAX: f32 = 3700.0; // Max value read by ADC linear potentiometer
+const ADC_DEADBAND: u16 = 200; // Cutoff threshold for ADC, values below this will be considered as 0
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
-    use phln::wavesculptor;
-    use phln::driver_controls;
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
@@ -115,8 +122,8 @@ mod app {
         mppt_a: Mppt,
         mppt_b: Mppt,
         ws22: WaveSculptor,
-        cruise: com::wavesculptor::ControlTypes,
-        mode: com::wavesculptor::DriverModes,
+        cruise: ControlTypes,
+        mode: DriverModes,
         state: State,
     }
 
@@ -125,7 +132,8 @@ mod app {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
         adc: ADC,
-        adc_pin: PC1<Analog>,
+        accel_pedal: PC1<Analog>,
+        brake_pedal: PA4<Input<PullUp>>,
         driver_controls: DriverControls,
     }
 
@@ -208,9 +216,9 @@ mod app {
         let mppt_a = Mppt::new(ID_BASE);
         let mppt_b = Mppt::new(ID_BASE + ID_INC);
 
-        let ws22 = WaveSculptor::new(wavesculptor::ID_BASE);
+        let ws22 = WaveSculptor::new(phln::wavesculptor::ID_BASE);
 
-        let driver_controls = DriverControls::new(driver_controls::ID_BASE_DEFAULT);
+        let driver_controls = DriverControls::new(phln::driver_controls::ID_BASE_DEFAULT);
 
         // configure horn
         let horn_output = gpiob
@@ -259,7 +267,8 @@ mod app {
             &mut rcc.ccipr,
             &mut delay,
         );
-        let adc_pin = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        let accel_pedal = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        let brake_pedal = gpioa.pa4.into_pull_up_input(&mut gpioa.moder, &mut gpioa.pupdr);
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
@@ -267,7 +276,7 @@ mod app {
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
         feed_bms::spawn().unwrap();
-        // send_rpm::spawn_after(Duration::millis(5000)).unwrap();
+
         // init_mppts::spawn().unwrap();
 
         read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
@@ -283,15 +292,16 @@ mod app {
                 mppt_a,
                 mppt_b,
                 ws22,
-                cruise: com::wavesculptor::ControlTypes::Torque,
-                mode: com::wavesculptor::DriverModes::Neutral,
+                cruise: ControlTypes::Torque,
+                mode: DriverModes::Neutral,
                 state,
             },
             Local {
                 watchdog,
                 status_led,
                 adc,
-                adc_pin,
+                accel_pedal,
+                brake_pedal,
                 driver_controls,
             },
             init::Monotonics(mono),
@@ -342,9 +352,9 @@ mod app {
 
         cx.local.watchdog.feed();
 
-        // cx.shared.lamps.lock(|lamps| {
-        //     lamps.run();
-        // });
+        cx.shared.lamps.lock(|lamps| {
+            lamps.run();
+        });
 
         // cx.shared.horn.lock(|horn| {
         //     horn.run();
@@ -354,15 +364,15 @@ mod app {
         cx.shared.can.lock(|can| {
             cx.shared.ws22.lock(|ws22| {
                 if let Some(velocity) = ws22.status().vehicle_velocity {
-                    nb::block!(can.transmit(&com::wavesculptor::speed_message(DEVICE, velocity))).unwrap();
+                    nb::block!(can.transmit(&wavesculptor::speed_message(DEVICE, velocity))).unwrap();
                 }
 
                 if let Some(voltage) = ws22.status().bus_voltage {
-                    nb::block!(can.transmit(&com::wavesculptor::battery_message(DEVICE, voltage))).unwrap();
+                    nb::block!(can.transmit(&wavesculptor::battery_message(DEVICE, voltage))).unwrap();
                 }
 
                 if let Some(temp) = ws22.status().motor_temperature {
-                    nb::block!(can.transmit(&com::wavesculptor::temperature_message(DEVICE, temp))).unwrap();
+                    nb::block!(can.transmit(&wavesculptor::temperature_message(DEVICE, temp))).unwrap();
                 }
             });
         });
@@ -393,19 +403,6 @@ mod app {
 
         feed_bms::spawn_after(Duration::millis(100)).unwrap();
     }
-
-    // #[task(priority = 1, shared = [can], local=[driver_controls])]
-    // fn send_rpm(mut cx: send_rpm::Context) {
-    //     // TODO this should only happen when a switch on the dash is on
-    //     let dc = cx.local.driver_controls;
-    //     cx.shared.can.lock(|can| {
-    //         // Feed BMS watchdog
-    //         let frame = dc.motor_drive(100f32, 0.01f32);
-    //         nb::block!(can.transmit(&frame)).unwrap();
-    //     });
-
-    //     send_rpm::spawn_after(Duration::millis(200)).unwrap();
-    // }
 
     /// Live, laugh, love
     #[task(priority = 1, shared = [can], local = [status_led])]
@@ -454,7 +451,7 @@ mod app {
                 defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
                 
                 cx.shared.ws22.lock(|ws22| {
-                    if id.as_raw() >= wavesculptor::ID_BASE {
+                    if id.as_raw() >= phln::wavesculptor::ID_BASE {
                         let _res = ws22.receive(frame);
                     } else {
                         // must be MPPT frame, handle accordingly
@@ -484,17 +481,17 @@ mod app {
                     .lamps
                     .lock(|lamps| handle_lighting_frame(lamps, &frame)),
                 com::horn::PGN_HORN_MESSAGE => defmt::debug!("honk"),
-                com::wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
+                wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
                     cx.shared.cruise.lock(|cruise| {
                         if let Some(data) = frame.data() {
-                            *cruise = com::wavesculptor::ControlTypes::from(data[0]);
+                            *cruise = ControlTypes::from(data[0]);
                         }
                     });
                 },
-                com::wavesculptor::PGN_SET_DRIVER_MODE => {
+                wavesculptor::PGN_SET_DRIVER_MODE => {
                     cx.shared.mode.lock(|mode| {
                         if let Some(data) = frame.data() {
-                            *mode = com::wavesculptor::DriverModes::from(data[0]);
+                            *mode = DriverModes::from(data[0]);
                         }
                     });
                 },
@@ -526,7 +523,6 @@ mod app {
                 match com::lighting::LampsState::from_bits(bytes_int) {
                     Some(data) => {
                         lamps.set_state(data);
-                        lamps.run();
                     }
                     _ => defmt::debug!("Got invalid lighting data"),
                 }
@@ -535,41 +531,52 @@ mod app {
         }
     }
 
-    #[task(shared=[can, cruise, mode, ws22], local = [adc, adc_pin, driver_controls])]
+    #[task(shared=[can, cruise, mode, ws22], local = [adc, accel_pedal, brake_pedal, driver_controls])]
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
-        let adc_value = cx.local.adc.read(cx.local.adc_pin).unwrap();
+        let accel_throttle = cx.local.adc.read(cx.local.accel_pedal).unwrap();
+        let is_braking = cx.local.brake_pedal.is_high(); // assuming braking is a simple toggle
+        // to bring car to a halt asap
+
         let dc = cx.local.driver_controls;
 
         cx.shared.cruise.lock(|cruise| {
             cx.shared.mode.lock(|mode| {
                 cx.shared.ws22.lock(|ws22| {
                     let percentage: f32 = {
-                        if *cruise == com::wavesculptor::ControlTypes::Cruise {
-                            1.0
+                        if is_braking { // TODO this OR mode is in Neutral - add once testing is done
+                            0.1f32
                         } else {
-                            if adc_value < 200 {
-                                0.0
+                            if *cruise == ControlTypes::Cruise {
+                                1.0
                             } else {
-                                (adc_value - 200) as f32 / 3700.0
+                                if accel_throttle < ADC_DEADBAND {
+                                    0.0
+                                } else {
+                                    (accel_throttle - ADC_DEADBAND) as f32 / ADC_PEDAL_MAX
+                                }
                             }
                         }
+                        
                     };
 
                     let current_rpms = match ws22.status().motor_velocity {
                         Some(rpms) => rpms,
-                        None => 630f32
+                        None => 4000f32
                     };
 
                     let desired_rpms = {
-                        
-                        if *mode == com::wavesculptor::DriverModes::Reverse {
-                            -630f32
+                        if is_braking { // TODO this OR mode is in Neutral - add once testing is done
+                            0f32
                         } else {
-                            if *cruise == com::wavesculptor::ControlTypes::Cruise {current_rpms} else {630f32}
+                            if *mode == DriverModes::Reverse {
+                                -1500f32
+                            } else {
+                                if *cruise == ControlTypes::Cruise {current_rpms} else {4000f32}
+                            }
                         }
                     };
                     
-                    defmt::debug!("{:?} {:?}", adc_value, percentage);
+                    defmt::debug!("{:?} {:?} {}", accel_throttle, percentage, is_braking);
                     // TODO if in cruise, velocity should be fixed to desired speed
                     // probably just retrieve the current speed from ws
                     let frame = dc.motor_drive(desired_rpms, percentage);
