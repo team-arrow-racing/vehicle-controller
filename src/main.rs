@@ -353,18 +353,15 @@ mod app {
         cx.shared.can.lock(|can| {
             cx.shared.ws22.lock(|ws22| {
                 if let Some(velocity) = ws22.status().vehicle_velocity {
-                    defmt::debug!("vel {:?}", velocity);
-                    // nb::block!(can.transmit(&com::wavesculptor::speed_message(DEVICE, velocity))).unwrap();
+                    nb::block!(can.transmit(&com::wavesculptor::speed_message(DEVICE, velocity))).unwrap();
                 }
 
                 if let Some(voltage) = ws22.status().bus_voltage {
-                    defmt::debug!("vel {:?}", voltage);
-                    // nb::block!(can.transmit(&com::wavesculptor::battery_message(DEVICE, voltage))).unwrap();
+                    nb::block!(can.transmit(&com::wavesculptor::battery_message(DEVICE, voltage))).unwrap();
                 }
 
                 if let Some(temp) = ws22.status().motor_temperature {
-                    defmt::debug!("tmp {:?}", temp);
-                    // nb::block!(can.transmit(&com::wavesculptor::temperature_message(DEVICE, temp))).unwrap();
+                    nb::block!(can.transmit(&com::wavesculptor::temperature_message(DEVICE, temp))).unwrap();
                 }
             });
         });
