@@ -54,7 +54,6 @@ use solar_car::{
         wavesculptor::{
             self,
             DriverModes,
-            ControlTypes
         }}, 
     device, 
     j1939,
@@ -102,6 +101,9 @@ const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
 const ADC_PEDAL_MAX: f32 = 3700.0; // Max value read by ADC linear potentiometer
 const ADC_DEADBAND: u16 = 200; // Cutoff threshold for ADC, values below this will be considered as 0
+const MAX_FORWARD_RPMS: f32 = 4000.0;
+const MAX_REVERSE_RPMS: f32 = -1500.0;
+const BRAKING_PERCENTAGE: f32 = 0.1;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
@@ -122,7 +124,7 @@ mod app {
         mppt_a: Mppt,
         mppt_b: Mppt,
         ws22: WaveSculptor,
-        cruise: ControlTypes,
+        cruise: bool,
         mode: DriverModes,
         state: State,
     }
@@ -292,7 +294,7 @@ mod app {
                 mppt_a,
                 mppt_b,
                 ws22,
-                cruise: ControlTypes::Torque,
+                cruise: false,
                 mode: DriverModes::Neutral,
                 state,
             },
@@ -484,7 +486,7 @@ mod app {
                 wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
                     cx.shared.cruise.lock(|cruise| {
                         if let Some(data) = frame.data() {
-                            *cruise = ControlTypes::from(data[0]);
+                            *cruise = data[0] != 0;
                         }
                     });
                 },
@@ -544,9 +546,9 @@ mod app {
                 cx.shared.ws22.lock(|ws22| {
                     let percentage: f32 = {
                         if is_braking { // TODO this OR mode is in Neutral - add once testing is done
-                            0.1f32
+                            BRAKING_PERCENTAGE
                         } else {
-                            if *cruise == ControlTypes::Cruise {
+                            if *cruise {
                                 1.0
                             } else {
                                 if accel_throttle < ADC_DEADBAND {
@@ -561,17 +563,17 @@ mod app {
 
                     let current_rpms = match ws22.status().motor_velocity {
                         Some(rpms) => rpms,
-                        None => 4000f32
+                        None => MAX_FORWARD_RPMS
                     };
 
                     let desired_rpms = {
                         if is_braking { // TODO this OR mode is in Neutral - add once testing is done
-                            0f32
+                            0.0
                         } else {
                             if *mode == DriverModes::Reverse {
-                                -1500f32
+                                MAX_REVERSE_RPMS
                             } else {
-                                if *cruise == ControlTypes::Cruise {current_rpms} else {4000f32}
+                                if *cruise {current_rpms} else {MAX_FORWARD_RPMS}
                             }
                         }
                     };
