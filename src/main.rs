@@ -25,51 +25,55 @@ use bxcan::{filter::Mask32, Frame, Id, Interrupts, StandardId};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
+    adc::{DmaMode, SampleTime, Sequence, ADC},
     can::Can,
-    gpio::{Analog, Alternate, Input, Output, PullUp, PushPull, 
-        PA4,
-        PA9, // LIN TX
+    delay::{Delay, DelayCM},
+    dma::{dma1, RxDma, Transfer, W},
+    gpio::{
+        Alternate,
+        Analog,
+        Input,
+        Output,
+        PullUp,
+        PushPull,
         PA10, // LIN RX
         PA11, // CAN RX
         PA12, // CAN TX
+        PA4,
+        PA9, // LIN TX
+        PB13,
         PB4, // STATUS LED
         PB6, // SWITCH 1
         PB7, // SWITCH 2
         PB8, // SWITCH 3
         PB9, // SWITCH 4
-        PB13,
         PC1, // ADC IN
     },
     pac::CAN1,
-    adc::{DmaMode, SampleTime, Sequence, ADC},
-    delay::{Delay, DelayCM},
-    dma::{dma1, RxDma, Transfer, W},
     prelude::*,
     watchdog::IndependentWatchdog,
 };
 
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
 use solar_car::{
-    com::{self, 
-        wavesculptor::{
-            self,
-            DriverModes,
-        },
-        lighting::LampsState}, 
-    device, 
-    j1939,
+    com::{
+        self,
+        lighting::LampsState,
+        wavesculptor::{self, DriverModes},
+    },
+    device, j1939,
     j1939::pgn::{Number, Pgn},
 };
 
 mod horn;
-mod state;
 mod lighting;
+mod state;
 
-use state::State;
 use horn::Horn;
 use lighting::Lamps;
-use phln::wavesculptor::WaveSculptor;
 use phln::driver_controls::DriverControls;
+use phln::wavesculptor::WaveSculptor;
+use state::State;
 
 /// Message format identifier
 #[repr(u8)]
@@ -115,11 +119,12 @@ mod app {
     pub type Duration = fugit::TimerDuration<u64, SYSCLK>;
     pub type Instant = fugit::TimerInstant<u64, SYSCLK>;
 
-    type Can1Pins = (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>);
+    type Can1Pins =
+        (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>);
 
     #[shared]
     struct Shared {
-        can: bxcan::Can<Can<CAN1,Can1Pins>>,
+        can: bxcan::Can<Can<CAN1, Can1Pins>>,
         horn: Horn,
         lamps: Lamps,
         mppt_a: Mppt,
@@ -196,8 +201,7 @@ mod app {
             // configure interrupts
             can.enable_interrupts(
                 Interrupts::TRANSMIT_MAILBOX_EMPTY
-                    | Interrupts::FIFO0_MESSAGE_PENDING
-                    // | Interrupts::FIFO1_MESSAGE_PENDING,
+                    | Interrupts::FIFO0_MESSAGE_PENDING, // | Interrupts::FIFO1_MESSAGE_PENDING,
             );
             nb::block!(can.enable_non_blocking()).unwrap();
 
@@ -221,7 +225,8 @@ mod app {
 
         let ws22 = WaveSculptor::new(phln::wavesculptor::ID_BASE);
 
-        let driver_controls = DriverControls::new(phln::driver_controls::ID_BASE_DEFAULT);
+        let driver_controls =
+            DriverControls::new(phln::driver_controls::ID_BASE_DEFAULT);
 
         // configure horn
         let horn_output = gpiob
@@ -270,8 +275,11 @@ mod app {
             &mut rcc.ccipr,
             &mut delay,
         );
-        let accel_pedal = gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
-        let brake_pedal = gpioa.pa4.into_pull_up_input(&mut gpioa.moder, &mut gpioa.pupdr);
+        let accel_pedal =
+            gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        let brake_pedal = gpioa
+            .pa4
+            .into_pull_up_input(&mut gpioa.moder, &mut gpioa.pupdr);
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
@@ -359,27 +367,36 @@ mod app {
             lamps.run();
         });
 
-        // cx.shared.horn.lock(|horn| {
-        //     horn.run();
-        // });
+        cx.shared.horn.lock(|horn| {
+            horn.run();
+        });
 
         // send can frames to steering wheel
         cx.shared.can.lock(|can| {
             cx.shared.ws22.lock(|ws22| {
                 if let Some(velocity) = ws22.status().vehicle_velocity {
-                    nb::block!(can.transmit(&wavesculptor::speed_message(DEVICE, velocity))).unwrap();
+                    nb::block!(can.transmit(&wavesculptor::speed_message(
+                        DEVICE, velocity
+                    )))
+                    .unwrap();
                 }
 
                 if let Some(voltage) = ws22.status().bus_voltage {
-                    nb::block!(can.transmit(&wavesculptor::battery_message(DEVICE, voltage))).unwrap();
+                    nb::block!(can.transmit(&wavesculptor::battery_message(
+                        DEVICE, voltage
+                    )))
+                    .unwrap();
                 }
 
                 if let Some(temp) = ws22.status().motor_temperature {
-                    nb::block!(can.transmit(&wavesculptor::temperature_message(DEVICE, temp))).unwrap();
+                    nb::block!(can.transmit(
+                        &wavesculptor::temperature_message(DEVICE, temp)
+                    ))
+                    .unwrap();
                 }
             });
         });
-    
+
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
@@ -388,9 +405,10 @@ mod app {
         defmt::trace!("task: feed_watchdog");
 
         cx.shared.can.lock(|can| {
-            nb::block!(can.transmit(&com::array::feed_watchdog(DEVICE))).unwrap();
+            nb::block!(can.transmit(&com::array::feed_watchdog(DEVICE)))
+                .unwrap();
         });
-        
+
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
 
@@ -416,7 +434,8 @@ mod app {
 
         if cx.local.status_led.is_set_low() {
             cx.shared.can.lock(|can| {
-                nb::block!(can.transmit(&com::heartbeat::message(DEVICE))).unwrap();
+                nb::block!(can.transmit(&com::heartbeat::message(DEVICE)))
+                    .unwrap();
             });
         }
 
@@ -445,14 +464,14 @@ mod app {
         })
     }
 
-    #[task(priority = 2, shared = [lamps, mppt_a, mppt_b, ws22, cruise, mode], capacity=100)]
+    #[task(priority = 2, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode], capacity=100)]
     fn can_receive(mut cx: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
 
         let id = match frame.id() {
             Id::Standard(id) => {
                 // defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
-                
+
                 cx.shared.ws22.lock(|ws22| {
                     if id.as_raw() >= phln::wavesculptor::ID_BASE {
                         let _res = ws22.receive(frame);
@@ -483,21 +502,25 @@ mod app {
                     .shared
                     .lamps
                     .lock(|lamps| handle_lighting_frame(lamps, &frame)),
-                com::horn::PGN_HORN_MESSAGE => defmt::debug!("honk"),
+                com::horn::PGN_HORN_MESSAGE => {
+                    cx.shared.horn.lock(|horn| {
+                        horn.set_on();
+                    });
+                }
                 wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
                     cx.shared.cruise.lock(|cruise| {
                         if let Some(data) = frame.data() {
                             *cruise = data[0] != 0;
                         }
                     });
-                },
+                }
                 wavesculptor::PGN_SET_DRIVER_MODE => {
                     cx.shared.mode.lock(|mode| {
                         if let Some(data) = frame.data() {
                             *mode = DriverModes::from(data[0]);
                         }
                     });
-                },
+                }
                 _ => {
                     defmt::debug!("whut happun")
                 }
@@ -538,7 +561,7 @@ mod app {
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
         let accel_throttle = cx.local.adc.read(cx.local.accel_pedal).unwrap();
         let is_braking = cx.local.brake_pedal.is_high(); // assuming braking is a simple toggle
-        // to bring car to a halt asap
+                                                         // to bring car to a halt asap
 
         // Turn on brake lights if needed
         cx.shared.lamps.lock(|lamps| {
@@ -551,7 +574,8 @@ mod app {
             cx.shared.mode.lock(|mode| {
                 cx.shared.ws22.lock(|ws22| {
                     let percentage: f32 = {
-                        if is_braking { // TODO this OR mode is in Neutral - add once testing is done
+                        if is_braking {
+                            // TODO this OR mode is in Neutral - add once testing is done
                             BRAKING_PERCENTAGE // TODO this might need to be 0 - test and confirm
                         } else {
                             if *cruise {
@@ -561,7 +585,9 @@ mod app {
                                     0.0
                                 } else {
                                     // (accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))
-                                    (accel_throttle as f32/ (ADC_PEDAL_MAX - ADC_DEADBAND as f32)).max(1.0)
+                                    (accel_throttle as f32
+                                        / (ADC_PEDAL_MAX - ADC_DEADBAND as f32))
+                                        .max(1.0)
                                 }
                             }
                         }
@@ -569,22 +595,32 @@ mod app {
 
                     let current_rpms = match ws22.status().motor_velocity {
                         Some(rpms) => rpms,
-                        None => MAX_FORWARD_RPMS
+                        None => MAX_FORWARD_RPMS,
                     };
 
                     let desired_rpms = {
-                        if is_braking { // TODO this OR mode is in Neutral - add once testing is done
+                        if is_braking {
+                            // TODO this OR mode is in Neutral - add once testing is done
                             0.0
                         } else {
                             if *mode == DriverModes::Reverse {
                                 MAX_REVERSE_RPMS
                             } else {
-                                if *cruise {current_rpms} else {MAX_FORWARD_RPMS}
+                                if *cruise {
+                                    current_rpms
+                                } else {
+                                    MAX_FORWARD_RPMS
+                                }
                             }
                         }
                     };
-                    
-                    defmt::debug!("{:?} {:?} {}", accel_throttle, percentage, is_braking);
+
+                    defmt::debug!(
+                        "{:?} {:?} {}",
+                        accel_throttle,
+                        percentage,
+                        is_braking
+                    );
                     // TODO if in cruise, velocity should be fixed to desired speed
                     // probably just retrieve the current speed from ws
                     let frame = dc.motor_drive(desired_rpms, percentage);
@@ -598,15 +634,6 @@ mod app {
 
         read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
     }
-
-    // #[idle]
-    // fn idle(_: idle::Context) -> ! {
-    //     defmt::trace!("task: idle");
-
-    //     loop {
-    //         cortex_m::asm::nop();
-    //     }
-    // }
 }
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
