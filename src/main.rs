@@ -54,7 +54,8 @@ use solar_car::{
         wavesculptor::{
             self,
             DriverModes,
-        }}, 
+        },
+        lighting::LampsState}, 
     device, 
     j1939,
     j1939::pgn::{Number, Pgn},
@@ -99,8 +100,8 @@ pub const PGN_MESSAGE_TEST: Number = Number {
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
-const ADC_PEDAL_MAX: f32 = 3700.0; // Max value read by ADC linear potentiometer
-const ADC_DEADBAND: u16 = 200; // Cutoff threshold for ADC, values below this will be considered as 0
+const ADC_PEDAL_MAX: f32 = 3300.0; // Max value read by ADC linear potentiometer
+const ADC_DEADBAND: u16 = 500; // Cutoff threshold for ADC, values below this will be considered as 0
 const MAX_FORWARD_RPMS: f32 = 4000.0;
 const MAX_REVERSE_RPMS: f32 = -1500.0;
 const BRAKING_PERCENTAGE: f32 = 0.1;
@@ -450,7 +451,7 @@ mod app {
 
         let id = match frame.id() {
             Id::Standard(id) => {
-                defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
+                // defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
                 
                 cx.shared.ws22.lock(|ws22| {
                     if id.as_raw() >= phln::wavesculptor::ID_BASE {
@@ -471,7 +472,7 @@ mod app {
 
         let id: j1939::ExtendedId = id.into();
 
-        defmt::debug!("EXT FRAME: {:#06x} {:?}", id.to_bits(), frame);
+        // defmt::debug!("EXT FRAME: {:#06x} {:?}", id.to_bits(), frame);
 
         let id: j1939::ExtendedId = id.into();
 
@@ -522,9 +523,9 @@ mod app {
         match frame.data() {
             Some(bytes) => {
                 let bytes_int = bytes[0]; // TODO confirm data is just in first index
-                match com::lighting::LampsState::from_bits(bytes_int) {
+                match LampsState::from_bits(bytes_int) {
                     Some(data) => {
-                        lamps.set_state(data);
+                        lamps.set_lamp_state(data, true);
                     }
                     _ => defmt::debug!("Got invalid lighting data"),
                 }
@@ -533,11 +534,16 @@ mod app {
         }
     }
 
-    #[task(shared=[can, cruise, mode, ws22], local = [adc, accel_pedal, brake_pedal, driver_controls])]
+    #[task(shared=[can, cruise, mode, lamps, ws22], local = [adc, accel_pedal, brake_pedal, driver_controls])]
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
         let accel_throttle = cx.local.adc.read(cx.local.accel_pedal).unwrap();
         let is_braking = cx.local.brake_pedal.is_high(); // assuming braking is a simple toggle
         // to bring car to a halt asap
+
+        // Turn on brake lights if needed
+        cx.shared.lamps.lock(|lamps| {
+            lamps.set_lamp_state(LampsState::STOP, is_braking);
+        });
 
         let dc = cx.local.driver_controls;
 
@@ -546,7 +552,7 @@ mod app {
                 cx.shared.ws22.lock(|ws22| {
                     let percentage: f32 = {
                         if is_braking { // TODO this OR mode is in Neutral - add once testing is done
-                            BRAKING_PERCENTAGE
+                            BRAKING_PERCENTAGE // TODO this might need to be 0 - test and confirm
                         } else {
                             if *cruise {
                                 1.0
@@ -554,11 +560,11 @@ mod app {
                                 if accel_throttle < ADC_DEADBAND {
                                     0.0
                                 } else {
-                                    (accel_throttle - ADC_DEADBAND) as f32 / ADC_PEDAL_MAX
+                                    // (accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))
+                                    (accel_throttle as f32/ (ADC_PEDAL_MAX - ADC_DEADBAND as f32)).max(1.0)
                                 }
                             }
                         }
-                        
                     };
 
                     let current_rpms = match ws22.status().motor_velocity {

@@ -62,7 +62,7 @@ impl Lamps {
         match self.state {
             LampsState::INDICATOR_LEFT => defmt::debug!("Indicating LEFT!"),
             LampsState::INDICATOR_RIGHT => defmt::debug!("Indicating RIGHT!"),
-            LampsState::HAZARD => defmt::debug!("Hazard Ligghts on"),
+            LampsState::HAZARD => defmt::debug!("Hazard Lights on"),
             LampsState::DAYTIME => defmt::debug!("Daylights on"),
             LampsState::STOP => defmt::debug!("Braking!!"),
             _ => defmt::debug!("WAIT WAIT WAIT"),
