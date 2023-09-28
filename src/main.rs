@@ -93,13 +93,6 @@ pub enum VCUMessageFormat {
     Disable = 0x02,
 }
 
-pub const PGN_MESSAGE_TEST: Number = Number {
-    specific: device::Device::VehicleController as u8,
-    format: VCUMessageFormat::Enable as u8,
-    data_page: false,
-    extended_data_page: false,
-};
-
 // TODO store last time we received a message
 
 const DEVICE: device::Device = device::Device::VehicleController;
@@ -133,6 +126,7 @@ mod app {
         cruise: bool,
         mode: DriverModes,
         state: State,
+        enable_array: bool,
     }
 
     #[local]
@@ -306,6 +300,7 @@ mod app {
                 cruise: false,
                 mode: DriverModes::Neutral,
                 state,
+                enable_array: false,
             },
             Local {
                 watchdog,
@@ -412,14 +407,19 @@ mod app {
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
 
-    #[task(priority = 1, shared = [can])]
+    #[task(priority = 1, shared = [can, enable_array])]
     fn feed_bms(mut cx: feed_bms::Context) {
         // TODO this should only happen when a switch on the dash is on
-        cx.shared.can.lock(|can| {
-            // Feed BMS watchdog
-            let bms_id = StandardId::new(0x505).unwrap();
-            let frame = Frame::new_data(bms_id, [0x70, 0, 0, 0, 0, 0, 0, 0]);
-            nb::block!(can.transmit(&frame)).unwrap();
+        cx.shared.enable_array.lock(|ea| {
+            if *ea {
+                cx.shared.can.lock(|can| {
+                    // Feed BMS watchdog
+                    let bms_id = StandardId::new(0x505).unwrap();
+                    let frame =
+                        Frame::new_data(bms_id, [0x70, 0, 0, 0, 0, 0, 0, 0]);
+                    nb::block!(can.transmit(&frame)).unwrap();
+                });
+            }
         });
 
         feed_bms::spawn_after(Duration::millis(100)).unwrap();
@@ -464,7 +464,7 @@ mod app {
         })
     }
 
-    #[task(priority = 2, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode], capacity=100)]
+    #[task(priority = 2, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode, enable_array], capacity=100)]
     fn can_receive(mut cx: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
 
@@ -497,7 +497,12 @@ mod app {
 
         match id.pgn {
             Pgn::Destination(pgn) => match pgn {
-                PGN_MESSAGE_TEST => defmt::debug!("aur naur"),
+                com::array::PGN_ENABLE_CONTACTORS => {
+                    cx.shared.enable_array.lock(|ea| {
+                        // TODO this should parse the data and toggle it accordingly
+                        *ea = true;
+                    });
+                }
                 com::lighting::PGN_LIGHTING_STATE => cx
                     .shared
                     .lamps
