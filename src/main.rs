@@ -22,12 +22,15 @@ use defmt_rtt as _;
 use panic_probe as _;
 
 use dwt_systick_monotonic::{fugit, DwtSystick};
-
+use timed_debouncer::Debouncer;
 use stm32l4xx_hal::{
+    adc::{DmaMode, SampleTime, Sequence, ADC},
     can::Can,
     device::CAN1,
+    delay::DelayCM,
     flash::FlashExt,
     gpio::{Analog, Alternate, Output, PushPull, 
+        PA0,
         PA4,
         PA9, // LIN TX
         PA10, // LIN RX
@@ -102,6 +105,8 @@ mod app {
     struct Local {
         watchdog: IndependentWatchdog,
         status_led: PB4<Output<PushPull>>,
+        adc: ADC,
+        accel_pedal: PA0<Analog>,
     }
 
     #[init]
@@ -186,11 +191,23 @@ mod app {
             wd
         };
 
+        let mut delay = DelayCM::new(clocks);
+        let adc = ADC::new(
+            cx.device.ADC1,
+            cx.device.ADC_COMMON,
+            &mut rcc.ahb2,
+            &mut rcc.ccipr,
+            &mut delay,
+        );
+        let accel_pedal =
+            gpioa.pa0.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
+
         // start heartbeat task
         // start comms with aic
         // feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
+        read_adc_pin::spawn().unwrap();
         run::spawn().unwrap();
         heartbeat::spawn_after(Duration::millis(500)).unwrap();
 
@@ -203,6 +220,8 @@ mod app {
             Local {
                 watchdog,
                 status_led,
+                adc,
+                accel_pedal
             },
             init::Monotonics(mono),
         )
@@ -226,7 +245,7 @@ mod app {
 
         if cx.local.status_led.is_set_low() {
             cx.shared.can.lock(|can| {
-                let _ = can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
+                // let _ = can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
             });
         }
 
@@ -266,6 +285,17 @@ mod app {
                 defmt::debug!("EXT FRAME: {:#06x} {:?}", id.as_raw(), frame);
             } // not used
         }
+    }
+
+    #[task(local = [adc, accel_pedal])]
+    fn read_adc_pin(mut cx: read_adc_pin::Context) {
+        let mut debouncer = Debouncer::new();
+        let accel_throttle = cx.local.adc.read(cx.local.accel_pedal).unwrap();
+        let d_val = debouncer.update(accel_throttle, monotonics::MonoTimer::now().ticks(), 800);
+
+        defmt::debug!("{} {}", d_val, (d_val / 1900) as i16);
+
+        read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
     }
 
     // #[idle]

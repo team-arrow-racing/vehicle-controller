@@ -591,6 +591,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "timed-debouncer"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5daefa3de30509898570eefb2bd1643f3038b9f16a56c0c7d95ffe1c654c8f52"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -617,6 +623,7 @@ dependencies = [
  "panic-probe",
  "solar-car",
  "stm32l4xx-hal",
+ "timed-debouncer",
 ]
 
 [[package]]
