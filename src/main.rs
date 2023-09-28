@@ -517,7 +517,20 @@ mod app {
                 wavesculptor::PGN_SET_DRIVER_MODE => {
                     cx.shared.mode.lock(|mode| {
                         if let Some(data) = frame.data() {
-                            *mode = DriverModes::from(data[0]);
+                            let new_mode = DriverModes::from(data[0]);
+                            if new_mode == DriverModes::Reverse {
+                                // Do not go into reverse if car is moving forward
+                                cx.shared.ws22.lock(|ws22| {
+                                    if let Some(rpms) =
+                                        ws22.status().motor_velocity
+                                    {
+                                        if (rpms as i32) > 2 {
+                                            return;
+                                        }
+                                    }
+                                });
+                            }
+                            *mode = new_mode;
                         }
                     });
                 }

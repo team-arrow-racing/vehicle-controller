@@ -42,10 +42,10 @@ impl Lamps {
     pub fn set_lamp_state(&mut self, lamp: LampsState, state: bool) {
         match lamp {
             LampsState::INDICATOR_LEFT
-             | LampsState::INDICATOR_RIGHT
-             | LampsState::HAZARD
-             | LampsState::DAYTIME
-             | LampsState::STOP => {
+            | LampsState::INDICATOR_RIGHT
+            | LampsState::HAZARD
+            | LampsState::DAYTIME
+            | LampsState::STOP => {
                 self.state.set(lamp, state);
             }
             _ => {
@@ -53,7 +53,6 @@ impl Lamps {
             }
         }
     }
-
 
     pub fn set_state(&mut self, state: LampsState) {
         // self.state = LampsState { bits: state };
