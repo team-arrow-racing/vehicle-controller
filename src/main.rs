@@ -126,7 +126,7 @@ mod app {
         cruise: bool,
         mode: DriverModes,
         state: State,
-        enable_array: bool,
+        enable_contactors: bool,
     }
 
     #[local]
@@ -280,7 +280,7 @@ mod app {
 
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
-        feed_bms::spawn().unwrap();
+        feed_contactors_heartbeat::spawn_after(Duration::millis(500)).unwrap();
 
         // init_mppts::spawn().unwrap();
 
@@ -300,7 +300,7 @@ mod app {
                 cruise: false,
                 mode: DriverModes::Neutral,
                 state,
-                enable_array: false,
+                enable_contactors: true, // TODO for demo, this may be removed in future
             },
             Local {
                 watchdog,
@@ -354,7 +354,7 @@ mod app {
 
     #[task(priority = 1, local = [watchdog], shared = [can, lamps, horn, ws22])]
     fn run(mut cx: run::Context) {
-        // defmt::trace!("task: run");
+        defmt::trace!("task: run");
 
         cx.local.watchdog.feed();
 
@@ -407,10 +407,10 @@ mod app {
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
 
-    #[task(priority = 1, shared = [can, enable_array])]
-    fn feed_bms(mut cx: feed_bms::Context) {
+    #[task(priority = 1, shared = [can, enable_contactors])]
+    fn feed_contactors_heartbeat(mut cx: feed_contactors_heartbeat::Context) {
         // TODO this should only happen when a switch on the dash is on
-        cx.shared.enable_array.lock(|ea| {
+        cx.shared.enable_contactors.lock(|ea| {
             if *ea {
                 cx.shared.can.lock(|can| {
                     // Feed BMS watchdog
@@ -422,7 +422,7 @@ mod app {
             }
         });
 
-        feed_bms::spawn_after(Duration::millis(100)).unwrap();
+        feed_contactors_heartbeat::spawn_after(Duration::millis(100)).unwrap();
     }
 
     /// Live, laugh, love
@@ -464,7 +464,7 @@ mod app {
         })
     }
 
-    #[task(priority = 2, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode, enable_array], capacity=100)]
+    #[task(priority = 2, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode, enable_contactors], capacity=100)]
     fn can_receive(mut cx: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
 
@@ -498,9 +498,10 @@ mod app {
         match id.pgn {
             Pgn::Destination(pgn) => match pgn {
                 com::array::PGN_ENABLE_CONTACTORS => {
-                    cx.shared.enable_array.lock(|ea| {
-                        // TODO this should parse the data and toggle it accordingly
-                        *ea = true;
+                    cx.shared.enable_contactors.lock(|ea| {
+                        if let Some(data) = frame.data() {
+                            *ea = data[0] != 0;
+                        }
                     });
                 }
                 com::lighting::PGN_LIGHTING_STATE => cx
