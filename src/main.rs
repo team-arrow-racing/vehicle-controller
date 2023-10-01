@@ -29,13 +29,18 @@ use stm32l4xx_hal::{
     device::CAN1,
     delay::DelayCM,
     flash::FlashExt,
-    gpio::{Analog, Alternate, Output, PushPull, 
+    gpio::{Analog, Alternate, Edge,
+        Input,
+        Output,
+        PullUp,
+        PushPull,
         PA0,
         PA4,
         PA9, // LIN TX
         PA10, // LIN RX
         PA11, // CAN RX
         PA12, // CAN TX
+        PB3,
         PB4, // STATUS LED
         PB6, // SWITCH 1
         PB7, // SWITCH 2
@@ -45,37 +50,15 @@ use stm32l4xx_hal::{
         PC1, // ADC IN
     },
     prelude::*,
+    stm32::Interrupt,
     watchdog::IndependentWatchdog,
 };
+
+use cortex_m::peripheral::NVIC;
 
 use solar_car::{
     com, device, j1939,
     j1939::pgn::{Number, Pgn},
-};
-
-/// Message format identifier
-#[repr(u8)]
-pub enum VCUMessageFormat {
-    // broadcast messages
-    /// Startup status message
-    Startup = 0xF0,
-    /// Heartbeat status message
-    Heartbeat = 0xF1,
-
-    // addressable messages
-    /// Generic reset command message
-    Reset = 0x00,
-    /// Generic enable command message
-    Enable = 0x01,
-    /// Generic disable command message
-    Disable = 0x02,
-}
-
-pub const PGN_MESSAGE_TEST: Number = Number {
-    specific: device::Device::VehicleController as u8,
-    format: VCUMessageFormat::Enable as u8,
-    data_page: false,
-    extended_data_page: false,
 };
 
 // TODO store last time we received a message
@@ -104,9 +87,10 @@ mod app {
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
-        status_led: PB4<Output<PushPull>>,
+        status_led: PB3<Output<PushPull>>,
         adc: ADC,
         accel_pedal: PA0<Analog>,
+        test_button: PB7<Input<PullUp>>
     }
 
     #[init]
@@ -140,7 +124,7 @@ mod app {
 
         // configure status led
         let status_led = gpiob
-            .pb4
+            .pb3
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
         // configure can bus
@@ -202,14 +186,30 @@ mod app {
         let accel_pedal =
             gpioa.pa0.into_analog(&mut gpioa.moder, &mut gpioa.pupdr);
 
+        let test_button = {
+            let mut btn = gpiob
+                .pb7
+                .into_pull_up_input(&mut gpiob.moder, &mut gpiob.pupdr);
+
+            btn.make_interrupt_source(&mut cx.device.SYSCFG, &mut rcc.apb2);
+            btn.enable_interrupt(&mut cx.device.EXTI);
+            btn.trigger_on_edge(&mut cx.device.EXTI, Edge::Falling);
+
+            unsafe {
+                NVIC::unmask(Interrupt::EXTI9_5);
+            }
+
+            btn
+        };
+
         // start heartbeat task
         // start comms with aic
         // feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
 
         // start main loop
-        read_adc_pin::spawn().unwrap();
+        // read_adc_pin::spawn().unwrap();
         run::spawn().unwrap();
-        heartbeat::spawn_after(Duration::millis(500)).unwrap();
+        // heartbeat::spawn_after(Duration::millis(500)).unwrap();
 
         // sim_ws::spawn().unwrap();
 
@@ -221,7 +221,8 @@ mod app {
                 watchdog,
                 status_led,
                 adc,
-                accel_pedal
+                accel_pedal,
+                test_button
             },
             init::Monotonics(mono),
         )
@@ -237,20 +238,20 @@ mod app {
     }
 
     /// Live, laugh, love
-    #[task(shared = [can], local=[status_led])]
-    fn heartbeat(mut cx: heartbeat::Context) {
-        defmt::trace!("task: heartbeat");
+    // #[task(shared = [can], local=[status_led])]
+    // fn heartbeat(mut cx: heartbeat::Context) {
+    //     defmt::trace!("task: heartbeat");
 
-        cx.local.status_led.toggle();
+    //     cx.local.status_led.toggle();
 
-        if cx.local.status_led.is_set_low() {
-            cx.shared.can.lock(|can| {
-                // let _ = can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
-            });
-        }
+    //     if cx.local.status_led.is_set_low() {
+    //         cx.shared.can.lock(|can| {
+    //             // let _ = can.transmit(&com::heartbeat::message(DEVICE)).unwrap();
+    //         });
+    //     }
 
-        heartbeat::spawn_after(Duration::millis(500)).unwrap();
-    }
+    //     heartbeat::spawn_after(Duration::millis(500)).unwrap();
+    // }
 
     /// Triggers on RX mailbox event.
     #[task(priority = 2, shared = [can], binds = CAN1_RX0)]
@@ -272,6 +273,21 @@ mod app {
             Ok(frame) => can_receive::spawn(frame).unwrap(),
             _ => {}
         })
+    }
+
+    // Triggers on interrupt event.
+    #[task(priority = 2, binds = EXTI9_5, local = [test_button, status_led])]
+    fn exti9_5_pending(cx: exti9_5_pending::Context) {
+        defmt::trace!("task: exti9_5 pending");
+        let test_button = cx.local.test_button;
+        let status = cx.local.status_led;
+
+        if test_button.check_interrupt() {
+            test_button.clear_interrupt_pending_bit();
+            defmt::debug!("Test button pressed {}", test_button.is_high());
+            status.toggle();
+        }
+    
     }
 
     #[task(priority = 1, capacity=100)]
