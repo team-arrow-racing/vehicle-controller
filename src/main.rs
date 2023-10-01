@@ -409,6 +409,7 @@ mod app {
 
     #[task(priority = 1, shared = [can, enable_contactors])]
     fn feed_contactors_heartbeat(mut cx: feed_contactors_heartbeat::Context) {
+        defmt::trace!("task: feed_contactors_heartbeat");
         // TODO this should only happen when a switch on the dash is on
         cx.shared.enable_contactors.lock(|ea| {
             if *ea {
@@ -464,13 +465,13 @@ mod app {
         })
     }
 
-    #[task(priority = 2, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode, enable_contactors], capacity=100)]
+    #[task(priority = 1, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode, enable_contactors], capacity=100)]
     fn can_receive(mut cx: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
 
         let id = match frame.id() {
             Id::Standard(id) => {
-                // defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
+                defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
 
                 cx.shared.ws22.lock(|ws22| {
                     if id.as_raw() >= phln::wavesculptor::ID_BASE {
@@ -491,7 +492,7 @@ mod app {
 
         let id: j1939::ExtendedId = id.into();
 
-        // defmt::debug!("EXT FRAME: {:#06x} {:?}", id.to_bits(), frame);
+        defmt::debug!("EXT FRAME: {:#06x} {:?}", id.to_bits(), frame);
 
         let id: j1939::ExtendedId = id.into();
 
@@ -503,7 +504,7 @@ mod app {
                             *ea = data[0] != 0;
                         }
                     });
-                }
+                },
                 com::lighting::PGN_LIGHTING_STATE => cx
                     .shared
                     .lamps
@@ -512,14 +513,14 @@ mod app {
                     cx.shared.horn.lock(|horn| {
                         horn.set_on();
                     });
-                }
+                },
                 wavesculptor::PGN_SET_DRIVE_CONTROL_TYPE => {
                     cx.shared.cruise.lock(|cruise| {
                         if let Some(data) = frame.data() {
                             *cruise = data[0] != 0;
                         }
                     });
-                }
+                },
                 wavesculptor::PGN_SET_DRIVER_MODE => {
                     cx.shared.mode.lock(|mode| {
                         if let Some(data) = frame.data() {
@@ -539,7 +540,7 @@ mod app {
                             *mode = new_mode;
                         }
                     });
-                }
+                },
                 _ => {
                     defmt::debug!("whut happun")
                 }
@@ -564,10 +565,11 @@ mod app {
         defmt::debug!("received lighting frame data {:?}", frame.data());
         match frame.data() {
             Some(bytes) => {
-                let bytes_int = bytes[0]; // TODO confirm data is just in first index
-                match LampsState::from_bits(bytes_int) {
+                let lamp = bytes[0]; // TODO confirm data is just in first index
+                let state = bytes[1];
+                match LampsState::from_bits(lamp) {
                     Some(data) => {
-                        lamps.set_lamp_state(data, true);
+                        lamps.set_lamp_state(data, state != 0);
                     }
                     _ => defmt::debug!("Got invalid lighting data"),
                 }
@@ -634,12 +636,12 @@ mod app {
                         }
                     };
 
-                    defmt::debug!(
-                        "{:?} {:?} {}",
-                        accel_throttle,
-                        percentage,
-                        is_braking
-                    );
+                    // defmt::debug!(
+                    //     "{:?} {:?} {}",
+                    //     accel_throttle,
+                    //     percentage,
+                    //     is_braking
+                    // );
                     // TODO if in cruise, velocity should be fixed to desired speed
                     // probably just retrieve the current speed from ws
                     let frame = dc.motor_drive(desired_rpms, percentage);
