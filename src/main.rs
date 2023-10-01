@@ -416,9 +416,14 @@ mod app {
                 cx.shared.can.lock(|can| {
                     // Feed BMS watchdog
                     let bms_id = StandardId::new(0x505).unwrap();
-                    let frame =
+                    let bms_frame =
                         Frame::new_data(bms_id, [0x70, 0, 0, 0, 0, 0, 0, 0]);
-                    nb::block!(can.transmit(&frame)).unwrap();
+                    nb::block!(can.transmit(&bms_frame)).unwrap();
+
+                    let heartbeat_id = StandardId::new(0x500).unwrap();
+                    let hb_frame =
+                        Frame::new_data(heartbeat_id, []);
+                    nb::block!(can.transmit(&hb_frame)).unwrap();
                 });
             }
         });
