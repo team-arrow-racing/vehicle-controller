@@ -97,8 +97,8 @@ pub enum VCUMessageFormat {
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
-const ADC_PEDAL_MAX: f32 = 3300.0; // Max value read by ADC linear potentiometer
-const ADC_DEADBAND: u16 = 500; // Cutoff threshold for ADC, values below this will be considered as 0
+const ADC_PEDAL_MAX: f32 = 2400.0; // Max value read by ADC linear potentiometer
+const ADC_DEADBAND: u16 = 200; // Cutoff threshold for ADC, values below this will be considered as 0
 const MAX_FORWARD_RPMS: f32 = 4000.0;
 const MAX_REVERSE_RPMS: f32 = -1500.0;
 const BRAKING_PERCENTAGE: f32 = 0.1;
@@ -168,7 +168,7 @@ mod app {
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
 
         // configure can bus
-        let can = {
+        let mut can = {
             let rx = gpioa.pa11.into_alternate(
                 &mut gpioa.moder,
                 &mut gpioa.otyper,
@@ -280,7 +280,8 @@ mod app {
 
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
-        feed_contactors_heartbeat::spawn_after(Duration::millis(500)).unwrap();
+        feed_init_contactors::spawn_after(Duration::millis(50)).unwrap();
+        feed_contactors_heartbeat::spawn_after(Duration::millis(100)).unwrap();
 
         // init_mppts::spawn().unwrap();
 
@@ -407,6 +408,19 @@ mod app {
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
     }
 
+    #[task(priority = 1, shared = [can])]
+    fn feed_init_contactors(mut cx: feed_init_contactors::Context) {
+        // Send initial can frame to bms
+        cx.shared.can.lock(|can| {
+            let bms_id = StandardId::new(0x505).unwrap();
+            let bms_frame =
+                Frame::new_data(bms_id, [0x70, 0, 0, 0, 0, 0, 0, 0]);
+            nb::block!(can.transmit(&bms_frame)).unwrap();
+        });
+        
+        feed_init_contactors::spawn_after(Duration::millis(2000)).unwrap();
+    }
+
     #[task(priority = 1, shared = [can, enable_contactors])]
     fn feed_contactors_heartbeat(mut cx: feed_contactors_heartbeat::Context) {
         defmt::trace!("task: feed_contactors_heartbeat");
@@ -428,7 +442,7 @@ mod app {
             }
         });
 
-        feed_contactors_heartbeat::spawn_after(Duration::millis(100)).unwrap();
+        feed_contactors_heartbeat::spawn_after(Duration::millis(50)).unwrap();
     }
 
     /// Live, laugh, love
@@ -476,7 +490,7 @@ mod app {
 
         let id = match frame.id() {
             Id::Standard(id) => {
-                defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
+                // defmt::debug!("STD FRAME: {:#06x} {:?}", id.as_raw(), frame);
 
                 cx.shared.ws22.lock(|ws22| {
                     if id.as_raw() >= phln::wavesculptor::ID_BASE {
@@ -497,7 +511,7 @@ mod app {
 
         let id: j1939::ExtendedId = id.into();
 
-        defmt::debug!("EXT FRAME: {:#06x} {:?}", id.to_bits(), frame);
+        // defmt::debug!("EXT FRAME: {:#06x} {:?}", id.to_bits(), frame);
 
         let id: j1939::ExtendedId = id.into();
 
@@ -547,7 +561,7 @@ mod app {
                     });
                 },
                 _ => {
-                    defmt::debug!("whut happun")
+                    // defmt::debug!("whut happun")
                 }
             },
             _ => {} // ignore broadcast messages
@@ -613,7 +627,7 @@ mod app {
                                     // (accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))
                                     (accel_throttle as f32
                                         / (ADC_PEDAL_MAX - ADC_DEADBAND as f32))
-                                        .max(1.0)
+                                        .min(1.0)
                                 }
                             }
                         }
@@ -641,12 +655,12 @@ mod app {
                         }
                     };
 
-                    // defmt::debug!(
-                    //     "{:?} {:?} {}",
-                    //     accel_throttle,
-                    //     percentage,
-                    //     is_braking
-                    // );
+                    defmt::debug!(
+                        "{:?} {:?} {}",
+                        accel_throttle,
+                        percentage,
+                        is_braking
+                    );
                     // TODO if in cruise, velocity should be fixed to desired speed
                     // probably just retrieve the current speed from ws
                     let frame = dc.motor_drive(desired_rpms, percentage);
