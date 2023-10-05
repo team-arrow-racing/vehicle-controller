@@ -126,7 +126,6 @@ mod app {
         cruise: bool,
         mode: DriverModes,
         state: State,
-        enable_contactors: bool,
     }
 
     #[local]
@@ -258,8 +257,6 @@ mod app {
             brake_light_output,
         );
 
-        let state = State::new();
-
         // Configure ADC
         let mut delay = DelayCM::new(clocks);
         let adc = ADC::new(
@@ -300,8 +297,7 @@ mod app {
                 ws22,
                 cruise: false,
                 mode: DriverModes::Neutral,
-                state,
-                enable_contactors: true, // TODO for demo, this may be removed in future
+                state: State::Idle,
             },
             Local {
                 watchdog,
@@ -353,7 +349,7 @@ mod app {
         });
     }
 
-    #[task(priority = 1, local = [watchdog], shared = [can, lamps, horn, ws22])]
+    #[task(priority = 1, local = [watchdog], shared = [can, lamps, horn, ws22, state])]
     fn run(mut cx: run::Context) {
         defmt::trace!("task: run");
 
@@ -365,6 +361,20 @@ mod app {
 
         cx.shared.horn.lock(|horn| {
             horn.run();
+        });
+
+        cx.shared.state.lock(|state| {
+            match state {
+                State::Idle => {
+
+                },
+                State::Collecting => {
+                    feed_contactors_heartbeat::spawn().unwrap();
+                },
+                State::Driving => {
+                    feed_contactors_heartbeat::spawn().unwrap();
+                },
+            }
         });
 
         // send can frames to steering wheel
@@ -421,28 +431,22 @@ mod app {
         feed_init_contactors::spawn_after(Duration::millis(2000)).unwrap();
     }
 
-    #[task(priority = 1, shared = [can, enable_contactors])]
+
+    #[task(priority = 1, shared = [can])]
     fn feed_contactors_heartbeat(mut cx: feed_contactors_heartbeat::Context) {
         defmt::trace!("task: feed_contactors_heartbeat");
         // TODO this should only happen when a switch on the dash is on
-        cx.shared.enable_contactors.lock(|ea| {
-            if *ea {
-                cx.shared.can.lock(|can| {
-                    // Feed BMS watchdog
-                    let bms_id = StandardId::new(0x505).unwrap();
-                    let bms_frame =
-                        Frame::new_data(bms_id, [0x70, 0, 0, 0, 0, 0, 0, 0]);
-                    nb::block!(can.transmit(&bms_frame)).unwrap();
 
-                    let heartbeat_id = StandardId::new(0x500).unwrap();
-                    let hb_frame =
-                        Frame::new_data(heartbeat_id, []);
-                    nb::block!(can.transmit(&hb_frame)).unwrap();
-                });
-            }
+        cx.shared.can.lock(|can| {
+            // Feed BMS watchdog
+            let bms_id = StandardId::new(0x505).unwrap();
+            let bms_frame = Frame::new_data(bms_id, [0x70, 0, 0, 0, 0, 0, 0, 0]);
+            nb::block!(can.transmit(&bms_frame)).unwrap();
+
+            let heartbeat_id = StandardId::new(0x500).unwrap();
+            let hb_frame = Frame::new_data(heartbeat_id, []);
+            nb::block!(can.transmit(&hb_frame)).unwrap();
         });
-
-        feed_contactors_heartbeat::spawn_after(Duration::millis(50)).unwrap();
     }
 
     /// Live, laugh, love
@@ -484,7 +488,7 @@ mod app {
         })
     }
 
-    #[task(priority = 1, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode, enable_contactors], capacity=100)]
+    #[task(priority = 1, shared = [lamps, horn, mppt_a, mppt_b, ws22, cruise, mode], capacity=100)]
     fn can_receive(mut cx: can_receive::Context, frame: Frame) {
         // defmt::trace!("task: can receive");
 
@@ -517,13 +521,6 @@ mod app {
 
         match id.pgn {
             Pgn::Destination(pgn) => match pgn {
-                com::array::PGN_ENABLE_CONTACTORS => {
-                    cx.shared.enable_contactors.lock(|ea| {
-                        if let Some(data) = frame.data() {
-                            *ea = data[0] != 0;
-                        }
-                    });
-                },
                 com::lighting::PGN_LIGHTING_STATE => cx
                     .shared
                     .lamps
