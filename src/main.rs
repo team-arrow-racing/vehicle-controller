@@ -374,6 +374,7 @@ mod app {
                 State::Driving => {
                     feed_contactors_heartbeat::spawn().unwrap();
                 },
+                State::Safe => {}
             }
         });
 
