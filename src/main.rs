@@ -32,6 +32,7 @@ use stm32l4xx_hal::{
     gpio::{
         Alternate,
         Analog,
+        Edge,
         Input,
         Output,
         PullUp,
@@ -39,7 +40,8 @@ use stm32l4xx_hal::{
         PA10, // LIN RX
         PA11, // CAN RX
         PA12, // CAN TX
-        PA4,
+        PA4, // ADC1_IN9
+        PA5, // ADC1_IN10 BRAKE PIN
         PA9, // LIN TX
         PB13,
         PB4, // STATUS LED
@@ -47,12 +49,15 @@ use stm32l4xx_hal::{
         PB7, // SWITCH 2
         PB8, // SWITCH 3
         PB9, // SWITCH 4
-        PC1, // ADC IN
+        PC1, // ADC IN2 PEDAL PIN
     },
     pac::CAN1,
     prelude::*,
+    stm32::Interrupt,
     watchdog::IndependentWatchdog,
 };
+
+use cortex_m::peripheral::NVIC;
 
 use elmar_mppt::{Mppt, ID_BASE, ID_INC};
 use solar_car::{
@@ -125,6 +130,7 @@ mod app {
         ws22: WaveSculptor,
         cruise: bool,
         mode: DriverModes,
+        brake_pedal: PA5<Input<PullUp>>,
         state: State,
     }
 
@@ -134,7 +140,6 @@ mod app {
         status_led: PB4<Output<PushPull>>,
         adc: ADC,
         accel_pedal: PC1<Analog>,
-        brake_pedal: PA4<Input<PullUp>>,
         driver_controls: DriverControls,
     }
 
@@ -268,9 +273,23 @@ mod app {
         );
         let accel_pedal =
             gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
-        let brake_pedal = gpioa
-            .pa4
-            .into_pull_up_input(&mut gpioa.moder, &mut gpioa.pupdr);
+
+        let brake_pedal = {
+            
+            let mut switch = gpioa
+                .pa5
+                .into_pull_up_input(&mut gpioa.moder, &mut gpioa.pupdr);
+            
+            switch.make_interrupt_source(&mut cx.device.SYSCFG, &mut rcc.apb2);
+            switch.enable_interrupt(&mut cx.device.EXTI);
+            switch.trigger_on_edge(&mut cx.device.EXTI, Edge::RisingFalling);
+
+            unsafe {
+                NVIC::unmask(Interrupt::EXTI9_5);
+            }
+
+            switch
+        };
 
         // start heartbeat task
         heartbeat::spawn_after(Duration::millis(1000)).unwrap();
@@ -297,6 +316,7 @@ mod app {
                 ws22,
                 cruise: false,
                 mode: DriverModes::Neutral,
+                brake_pedal,
                 state: State::Idle,
             },
             Local {
@@ -304,7 +324,6 @@ mod app {
                 status_led,
                 adc,
                 accel_pedal,
-                brake_pedal,
                 driver_controls,
             },
             init::Monotonics(mono),
@@ -595,76 +614,88 @@ mod app {
         }
     }
 
-    #[task(shared=[can, cruise, mode, lamps, ws22], local = [adc, accel_pedal, brake_pedal, driver_controls])]
+    #[task(shared=[lamps, brake_pedal], binds = EXTI9_5)]
+    fn exti9_5_pending(mut cx: exti9_5_pending::Context) {
+        cx.shared.brake_pedal.lock(|brake_pedal| {
+            if brake_pedal.check_interrupt() {
+                brake_pedal.clear_interrupt_pending_bit();
+                // Turn on brake lights if needed
+                let is_braking = brake_pedal.is_low();
+                cx.shared.lamps.lock(|lamps| {
+                    lamps.set_lamp_state(LampsState::STOP, is_braking);
+                });
+            }
+        });
+    }
+
+    #[task(shared=[can, cruise, mode, lamps, brake_pedal, ws22], local = [adc, accel_pedal, driver_controls])]
     fn read_adc_pin(mut cx: read_adc_pin::Context) {
         let accel_throttle = cx.local.adc.read(cx.local.accel_pedal).unwrap();
-        let is_braking = cx.local.brake_pedal.is_high(); // assuming braking is a simple toggle
-                                                         // to bring car to a halt asap
-
-        // Turn on brake lights if needed
-        cx.shared.lamps.lock(|lamps| {
-            lamps.set_lamp_state(LampsState::STOP, is_braking);
-        });
 
         let dc = cx.local.driver_controls;
 
         cx.shared.cruise.lock(|cruise| {
             cx.shared.mode.lock(|mode| {
                 cx.shared.ws22.lock(|ws22| {
-                    let percentage: f32 = {
-                        if is_braking {
-                            // TODO this OR mode is in Neutral - add once testing is done
-                            BRAKING_PERCENTAGE // TODO this might need to be 0 - test and confirm
-                        } else {
-                            if *cruise {
-                                1.0
-                            } else {
-                                if accel_throttle < ADC_DEADBAND {
-                                    0.0
-                                } else {
-                                    // (accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))
-                                    (accel_throttle as f32
-                                        / (ADC_PEDAL_MAX - ADC_DEADBAND as f32))
-                                        .min(1.0)
-                                }
-                            }
-                        }
-                    };
-
-                    let current_rpms = match ws22.status().motor_velocity {
-                        Some(rpms) => rpms,
-                        None => MAX_FORWARD_RPMS,
-                    };
-
-                    let desired_rpms = {
-                        if is_braking {
-                            // TODO this OR mode is in Neutral - add once testing is done
-                            0.0
-                        } else {
-                            if *mode == DriverModes::Reverse {
-                                MAX_REVERSE_RPMS
+                    cx.shared.brake_pedal.lock(|brake_pedal| {
+                        let is_braking = brake_pedal.is_low(); // assuming braking is a simple toggle
+                                                                            // to bring car to a halt asap
+                        
+                        let percentage: f32 = {
+                            if is_braking {
+                                // TODO this OR mode is in Neutral - add once testing is done
+                                BRAKING_PERCENTAGE // TODO this might need to be 0 - test and confirm
                             } else {
                                 if *cruise {
-                                    current_rpms
+                                    1.0
                                 } else {
-                                    MAX_FORWARD_RPMS
+                                    if accel_throttle < ADC_DEADBAND {
+                                        0.0
+                                    } else {
+                                        // (accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))
+                                        (accel_throttle as f32
+                                            / (ADC_PEDAL_MAX - ADC_DEADBAND as f32))
+                                            .min(1.0)
+                                    }
                                 }
                             }
-                        }
-                    };
+                        };
 
-                    defmt::debug!(
-                        "{:?} {:?} {}",
-                        accel_throttle,
-                        percentage,
-                        is_braking
-                    );
-                    // TODO if in cruise, velocity should be fixed to desired speed
-                    // probably just retrieve the current speed from ws
-                    let frame = dc.motor_drive(desired_rpms, percentage);
+                        let current_rpms = match ws22.status().motor_velocity {
+                            Some(rpms) => rpms,
+                            None => MAX_FORWARD_RPMS,
+                        };
 
-                    cx.shared.can.lock(|can| {
-                        nb::block!(can.transmit(&frame)).unwrap();
+                        let desired_rpms = {
+                            if is_braking {
+                                // TODO this OR mode is in Neutral - add once testing is done
+                                0.0
+                            } else {
+                                if *mode == DriverModes::Reverse {
+                                    MAX_REVERSE_RPMS
+                                } else {
+                                    if *cruise {
+                                        current_rpms
+                                    } else {
+                                        MAX_FORWARD_RPMS
+                                    }
+                                }
+                            }
+                        };
+
+                        defmt::debug!(
+                            "{:?} {:?} {}",
+                            accel_throttle,
+                            percentage,
+                            is_braking
+                        );
+                        // TODO if in cruise, velocity should be fixed to desired speed
+                        // probably just retrieve the current speed from ws
+                        let frame = dc.motor_drive(desired_rpms, percentage);
+
+                        cx.shared.can.lock(|can| {
+                            nb::block!(can.transmit(&frame)).unwrap();
+                        });
                     });
                 });
             });

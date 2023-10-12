@@ -87,7 +87,7 @@ impl Lamps {
         self.brake_pin
             .set_state(PinState::from(self.state.contains(LampsState::STOP)));
         
-        defmt::debug!("curr lighting state: {:?}", self.state.bits());
+        // defmt::debug!("curr lighting state: {:?}", self.state.bits());
         self.state
     }
 }
