@@ -97,8 +97,8 @@ pub enum VCUMessageFormat {
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
-const ADC_PEDAL_MAX: f32 = 2400.0; // Max value read by ADC linear potentiometer
-const ADC_DEADBAND: u16 = 200; // Cutoff threshold for ADC, values below this will be considered as 0
+const ADC_PEDAL_MAX: f32 = 2500.0; // Max value read by ADC linear potentiometer
+const ADC_DEADBAND: u16 = 700; // Cutoff threshold for ADC, values below this will be considered as 0
 const MAX_FORWARD_RPMS: f32 = 4000.0;
 const MAX_REVERSE_RPMS: f32 = -1500.0;
 const BRAKING_PERCENTAGE: f32 = 0.1;
@@ -622,10 +622,7 @@ mod app {
                                 if accel_throttle < ADC_DEADBAND {
                                     0.0
                                 } else {
-                                    // (accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))
-                                    (accel_throttle as f32
-                                        / (ADC_PEDAL_MAX - ADC_DEADBAND as f32))
-                                        .min(1.0)
+                                    ((accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))).min(1.0)
                                 }
                             }
                         }
