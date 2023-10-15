@@ -21,37 +21,25 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use bxcan::{filter::Mask32, Frame, Id, Interrupts, StandardId};
 use dwt_systick_monotonic::{fugit, DwtSystick};
 
 use stm32l4xx_hal::{
-    adc::{DmaMode, SampleTime, Sequence, ADC},
-    can::Can,
-    delay::{Delay, DelayCM},
-    dma::{dma1, RxDma, Transfer, W},
     gpio::{
-        Alternate,
-        Analog,
         Edge,
         Input,
         Output,
         PullUp,
         PushPull,
-        PA10, // LIN RX
-        PA11, // CAN RX
-        PA12, // CAN TX
-        PA4, // ADC1_IN9
-        PA5, // ADC1_IN10 BRAKE PIN
-        PA9, // LIN TX
-        PB13,
-        PB4, // STATUS LED
-        PB6, // SWITCH 1
-        PB7, // SWITCH 2
-        PB8, // SWITCH 3
-        PB9, // SWITCH 4
-        PC1, // ADC IN2 PEDAL PIN
+        PullDown,
+        PA6,
+        PA7,
+        PB3,
+        PB4,
+        PB6,
+        PB7,
+        PC6,
+        PC8
     },
-    pac::CAN1,
     prelude::*,
     stm32::Interrupt,
     watchdog::IndependentWatchdog,
@@ -59,54 +47,19 @@ use stm32l4xx_hal::{
 
 use cortex_m::peripheral::NVIC;
 
-use elmar_mppt::{Mppt, ID_BASE, ID_INC};
 use solar_car::{
-    com::{
-        self,
-        lighting::LampsState,
-        wavesculptor::{self, DriverModes},
-    },
-    device, j1939,
-    j1939::pgn::{Number, Pgn},
+    com::lighting::LampsState,
+    device
 };
 
-mod horn;
 mod lighting;
-mod state;
 
-use horn::Horn;
 use lighting::Lamps;
-use phln::driver_controls::DriverControls;
-use phln::wavesculptor::WaveSculptor;
-use state::State;
-
-/// Message format identifier
-#[repr(u8)]
-pub enum VCUMessageFormat {
-    // broadcast messages
-    /// Startup status message
-    Startup = 0xF0,
-    /// Heartbeat status message
-    Heartbeat = 0xF1,
-
-    // addressable messages
-    /// Generic reset command message
-    Reset = 0x00,
-    /// Generic enable command message
-    Enable = 0x01,
-    /// Generic disable command message
-    Disable = 0x02,
-}
 
 // TODO store last time we received a message
 
 const DEVICE: device::Device = device::Device::VehicleController;
 const SYSCLK: u32 = 80_000_000;
-const ADC_PEDAL_MAX: f32 = 2500.0; // Max value read by ADC linear potentiometer
-const ADC_DEADBAND: u16 = 700; // Cutoff threshold for ADC, values below this will be considered as 0
-const MAX_FORWARD_RPMS: f32 = 4000.0;
-const MAX_REVERSE_RPMS: f32 = -1500.0;
-const BRAKING_PERCENTAGE: f32 = 0.1;
 
 #[rtic::app(device = stm32l4xx_hal::pac, dispatchers = [SPI1, SPI2, SPI3, QUADSPI])]
 mod app {
@@ -117,30 +70,19 @@ mod app {
     pub type Duration = fugit::TimerDuration<u64, SYSCLK>;
     pub type Instant = fugit::TimerInstant<u64, SYSCLK>;
 
-    type Can1Pins =
-        (PA12<Alternate<PushPull, 9>>, PA11<Alternate<PushPull, 9>>);
-
     #[shared]
     struct Shared {
-        can: bxcan::Can<Can<CAN1, Can1Pins>>,
-        horn: Horn,
         lamps: Lamps,
-        mppt_a: Mppt,
-        mppt_b: Mppt,
-        ws22: WaveSculptor,
-        cruise: bool,
-        mode: DriverModes,
-        brake_pedal: PA5<Input<PullUp>>,
-        state: State,
+        brake_light: PB6<Output<PushPull>>,
     }
 
     #[local]
     struct Local {
         watchdog: IndependentWatchdog,
-        status_led: PB4<Output<PushPull>>,
-        adc: ADC,
-        accel_pedal: PC1<Analog>,
-        driver_controls: DriverControls,
+        status_led: PB3<Output<PushPull>>,
+        brake_pedal: PB7<Input<PullUp>>,
+        btn_indicator_left: PA6<Input<PullDown>>, // A5
+        btn_indicator_right: PA7<Input<PullDown>>, // A6
     }
 
     #[init]
@@ -153,7 +95,6 @@ mod app {
         let mut pwr = cx.device.PWR.constrain(&mut rcc.apb1r1);
         let mut gpioa = cx.device.GPIOA.split(&mut rcc.ahb2);
         let mut gpiob = cx.device.GPIOB.split(&mut rcc.ahb2);
-        let mut gpioc = cx.device.GPIOC.split(&mut rcc.ahb2);
 
         // configure system clock
         let clocks = rcc.cfgr.sysclk(80.MHz()).freeze(&mut flash.acr, &mut pwr);
@@ -168,46 +109,8 @@ mod app {
 
         // configure status led
         let status_led = gpiob
-            .pb4
+            .pb3
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-
-        // configure can bus
-        let mut can = {
-            let rx = gpioa.pa11.into_alternate(
-                &mut gpioa.moder,
-                &mut gpioa.otyper,
-                &mut gpioa.afrh,
-            );
-            let tx = gpioa.pa12.into_alternate(
-                &mut gpioa.moder,
-                &mut gpioa.otyper,
-                &mut gpioa.afrh,
-            );
-
-            let can = bxcan::Can::builder(Can::new(
-                &mut rcc.apb1r1,
-                cx.device.CAN1,
-                (tx, rx),
-            ))
-            .set_bit_timing(0x001c_0009); // 500kbit/s
-
-            let mut can = can.enable();
-
-            // configure filters
-            can.modify_filters().enable_bank(0, Mask32::accept_all());
-
-            // configure interrupts
-            can.enable_interrupts(
-                Interrupts::TRANSMIT_MAILBOX_EMPTY
-                    | Interrupts::FIFO0_MESSAGE_PENDING, // | Interrupts::FIFO1_MESSAGE_PENDING,
-            );
-            nb::block!(can.enable_non_blocking()).unwrap();
-
-            // broadcast startup message.
-            nb::block!(can.transmit(&com::startup::message(DEVICE))).unwrap();
-
-            can
-        };
 
         // configure watchdog
         let watchdog = {
@@ -218,31 +121,15 @@ mod app {
             wd
         };
 
-        let mppt_a = Mppt::new(ID_BASE);
-        let mppt_b = Mppt::new(ID_BASE + ID_INC);
-
-        let ws22 = WaveSculptor::new(phln::wavesculptor::ID_BASE);
-
-        let driver_controls =
-            DriverControls::new(phln::driver_controls::ID_BASE_DEFAULT);
-
-        // configure horn
-        let horn_output = gpiob
-            .pb12
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
-            .erase();
-
-        let horn = Horn::new(horn_output);
-
         // configure lighting
         let left_light_output = gpiob
-            .pb14 // TODO figure out actual pin
+            .pb1 // TODO figure out actual pin
             .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
             .erase();
 
-        let right_light_output = gpiob
-            .pb15 // TODO figure out actual pin
-            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper)
+        let right_light_output = gpioa
+            .pa8 // TODO figure out actual pin
+            .into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper)
             .erase();
 
         let day_light_output = gpiob
@@ -262,24 +149,43 @@ mod app {
             brake_light_output,
         );
 
-        // Configure ADC
-        let mut delay = DelayCM::new(clocks);
-        let adc = ADC::new(
-            cx.device.ADC1,
-            cx.device.ADC_COMMON,
-            &mut rcc.ahb2,
-            &mut rcc.ccipr,
-            &mut delay,
-        );
-        let accel_pedal =
-            gpioc.pc1.into_analog(&mut gpioc.moder, &mut gpioc.pupdr);
+        let btn_indicator_left = {
+            let mut btn = gpioa
+                .pa6
+                .into_pull_down_input(&mut gpioa.moder, &mut gpioa.pupdr);
+
+            btn.make_interrupt_source(&mut cx.device.SYSCFG, &mut rcc.apb2);
+            btn.enable_interrupt(&mut cx.device.EXTI);
+            btn.trigger_on_edge(&mut cx.device.EXTI, Edge::RisingFalling);
+
+            unsafe {
+                NVIC::unmask(Interrupt::EXTI9_5);
+            }
+
+            btn
+        };
+
+        let btn_indicator_right = {
+            let mut btn = gpioa
+                .pa7
+                .into_pull_down_input(&mut gpioa.moder, &mut gpioa.pupdr);
+
+            btn.make_interrupt_source(&mut cx.device.SYSCFG, &mut rcc.apb2);
+            btn.enable_interrupt(&mut cx.device.EXTI);
+            btn.trigger_on_edge(&mut cx.device.EXTI, Edge::RisingFalling);
+
+            unsafe {
+                NVIC::unmask(Interrupt::EXTI9_5);
+            }
+
+            btn
+        };
 
         let brake_pedal = {
-            
-            let mut switch = gpioa
-                .pa5
-                .into_pull_up_input(&mut gpioa.moder, &mut gpioa.pupdr);
-            
+            let mut switch = gpiob
+                .pb7
+                .into_pull_up_input(&mut gpiob.moder, &mut gpiob.pupdr);
+
             switch.make_interrupt_source(&mut cx.device.SYSCFG, &mut rcc.apb2);
             switch.enable_interrupt(&mut cx.device.EXTI);
             switch.trigger_on_edge(&mut cx.device.EXTI, Edge::RisingFalling);
@@ -291,36 +197,33 @@ mod app {
             switch
         };
 
-        read_adc_pin::spawn_after(Duration::millis(500)).unwrap();
+        let mut brake_light = gpiob
+            .pb6
+            .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+        brake_light.set_high();
 
         // start main loop
         run::spawn().unwrap();
+        heartbeat::spawn().unwrap();
 
         (
             Shared {
-                can,
-                horn,
                 lamps,
-                mppt_a,
-                mppt_b,
-                ws22,
-                cruise: false,
-                mode: DriverModes::Neutral,
-                brake_pedal,
-                state: State::Idle,
+                brake_light
             },
             Local {
                 watchdog,
                 status_led,
-                adc,
-                accel_pedal,
-                driver_controls,
+                btn_indicator_left,
+                btn_indicator_right,
+                brake_pedal,
+                
             },
             init::Monotonics(mono),
         )
     }
 
-    #[task(priority = 1, local = [watchdog], shared = [can, lamps, horn, ws22, state])]
+    #[task(priority = 1, local = [watchdog], shared = [lamps, brake_light])]
     fn run(mut cx: run::Context) {
         defmt::trace!("task: run");
 
@@ -330,94 +233,55 @@ mod app {
             lamps.run();
         });
 
+        cx.shared.brake_light.lock(|brake_light| {
+            defmt::debug!("brake light {}", brake_light.is_set_high());
+        });
+
         run::spawn_after(Duration::millis(10)).unwrap();
     }
 
-    #[task(shared=[lamps, brake_pedal], binds = EXTI9_5)]
-    fn exti9_5_pending(mut cx: exti9_5_pending::Context) {
-        cx.shared.brake_pedal.lock(|brake_pedal| {
-            if brake_pedal.check_interrupt() {
-                brake_pedal.clear_interrupt_pending_bit();
-                // Turn on brake lights if needed
-                let is_braking = brake_pedal.is_low();
-                cx.shared.lamps.lock(|lamps| {
-                    lamps.set_lamp_state(LampsState::STOP, is_braking);
-                });
-            }
-        });
+    #[task(local = [status_led])]
+    fn heartbeat(cx: heartbeat::Context) {
+        defmt::trace!("task: heartbeat");
+        cx.local.status_led.toggle();
+        // repeat every second
+        heartbeat::spawn_after(500.millis().into()).unwrap();
     }
 
-    #[task(shared=[can, cruise, mode, lamps, brake_pedal, ws22], local = [adc, accel_pedal, driver_controls])]
-    fn read_adc_pin(mut cx: read_adc_pin::Context) {
-        let accel_throttle = cx.local.adc.read(cx.local.accel_pedal).unwrap();
+    #[task(priority=2, shared=[lamps, brake_light], local=[btn_indicator_left, btn_indicator_right, brake_pedal], binds = EXTI9_5)]
+    fn exti9_5_pending(mut cx: exti9_5_pending::Context) {
 
-        let dc = cx.local.driver_controls;
+        let btn_ind_left = cx.local.btn_indicator_left;
+        let btn_ind_right = cx.local.btn_indicator_right;
+        let brake_pedal = cx.local.brake_pedal;
 
-        cx.shared.cruise.lock(|cruise| {
-            cx.shared.mode.lock(|mode| {
-                cx.shared.ws22.lock(|ws22| {
-                    cx.shared.brake_pedal.lock(|brake_pedal| {
-                        let is_braking = brake_pedal.is_low(); // assuming braking is a simple toggle
-                                                                            // to bring car to a halt asap
-                        
-                        let percentage: f32 = {
-                            if is_braking {
-                                // TODO this OR mode is in Neutral - add once testing is done
-                                BRAKING_PERCENTAGE // TODO this might need to be 0 - test and confirm
-                            } else {
-                                if *cruise {
-                                    1.0
-                                } else {
-                                    if accel_throttle < ADC_DEADBAND {
-                                        0.0
-                                    } else {
-                                        ((accel_throttle - ADC_DEADBAND) as f32 / (ADC_PEDAL_MAX - (ADC_DEADBAND as f32))).min(1.0)
-                                    }
-                                }
-                            }
-                        };
-
-                        let current_rpms = match ws22.status().motor_velocity {
-                            Some(rpms) => rpms,
-                            None => MAX_FORWARD_RPMS,
-                        };
-
-                        let desired_rpms = {
-                            if is_braking {
-                                // TODO this OR mode is in Neutral - add once testing is done
-                                0.0
-                            } else {
-                                if *mode == DriverModes::Reverse {
-                                    MAX_REVERSE_RPMS
-                                } else {
-                                    if *cruise {
-                                        current_rpms
-                                    } else {
-                                        MAX_FORWARD_RPMS
-                                    }
-                                }
-                            }
-                        };
-
-                        defmt::debug!(
-                            "{:?} {:?} {}",
-                            accel_throttle,
-                            percentage,
-                            is_braking
-                        );
-                        // TODO if in cruise, velocity should be fixed to desired speed
-                        // probably just retrieve the current speed from ws
-                        let frame = dc.motor_drive(desired_rpms, percentage);
-
-                        cx.shared.can.lock(|can| {
-                            nb::block!(can.transmit(&frame)).unwrap();
-                        });
-                    });
-                });
+        if btn_ind_left.check_interrupt() {
+            defmt::debug!("left ind {}", btn_ind_left.is_high());
+            btn_ind_left.clear_interrupt_pending_bit();
+            cx.shared.lamps.lock(|lamps| {
+                lamps.set_lamp_state(LampsState::INDICATOR_LEFT, btn_ind_left.is_high());
             });
-        });
+        }
 
-        read_adc_pin::spawn_after(Duration::millis(100)).unwrap();
+        if btn_ind_right.check_interrupt() {
+            defmt::debug!("right ind {}", btn_ind_right.is_high());
+            btn_ind_right.clear_interrupt_pending_bit();
+            cx.shared.lamps.lock(|lamps| {
+                lamps.set_lamp_state(LampsState::INDICATOR_RIGHT, btn_ind_right.is_high());
+            });
+        }
+
+        if brake_pedal.check_interrupt() {
+            brake_pedal.clear_interrupt_pending_bit();
+            cx.shared.brake_light.lock(|brake_light| {
+                brake_light.set_state(PinState::from(brake_pedal.is_high()));
+            });
+        }
+    }
+
+    #[task(shared=[lamps], binds = EXTI15_10)]
+    fn exti15_10_pending(mut cx: exti15_10_pending::Context) {
+
     }
 }
 
