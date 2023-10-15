@@ -278,7 +278,7 @@ mod app {
         // start comms with aic
         feed_watchdog::spawn_after(Duration::millis(500)).unwrap();
         feed_init_contactors::spawn_after(Duration::millis(50)).unwrap();
-        feed_contactors_heartbeat::spawn_after(Duration::millis(100)).unwrap();
+        // feed_contactors_heartbeat::spawn_after(Duration::millis(100)).unwrap();
 
         // init_mppts::spawn().unwrap();
 
@@ -366,7 +366,7 @@ mod app {
         cx.shared.state.lock(|state| {
             match state {
                 State::Idle => {
-
+                    feed_contactors_heartbeat::spawn().unwrap();
                 },
                 State::Collecting => {
                     feed_contactors_heartbeat::spawn().unwrap();
@@ -611,12 +611,19 @@ mod app {
         cx.shared.cruise.lock(|cruise| {
             cx.shared.mode.lock(|mode| {
                 cx.shared.ws22.lock(|ws22| {
+                    let current_rpms = match ws22.status().motor_velocity {
+                        Some(rpms) => rpms,
+                        None => MAX_FORWARD_RPMS,
+                    };
+
                     let percentage: f32 = {
                         if is_braking {
                             // TODO this OR mode is in Neutral - add once testing is done
                             BRAKING_PERCENTAGE // TODO this might need to be 0 - test and confirm
+                        } else if *mode == DriverModes::Neutral {
+                            0.0
                         } else {
-                            if *cruise {
+                            if *cruise && current_rpms >= 10.0 {
                                 1.0
                             } else {
                                 if accel_throttle < ADC_DEADBAND {
@@ -626,11 +633,6 @@ mod app {
                                 }
                             }
                         }
-                    };
-
-                    let current_rpms = match ws22.status().motor_velocity {
-                        Some(rpms) => rpms,
-                        None => MAX_FORWARD_RPMS,
                     };
 
                     let desired_rpms = {
@@ -651,13 +653,13 @@ mod app {
                     };
 
                     defmt::debug!(
-                        "{:?} {:?} {}",
+                        "{:?} {:?} {} {}",
                         accel_throttle,
                         percentage,
-                        is_braking
+                        is_braking,
+                        current_rpms
                     );
-                    // TODO if in cruise, velocity should be fixed to desired speed
-                    // probably just retrieve the current speed from ws
+                    
                     let frame = dc.motor_drive(desired_rpms, percentage);
 
                     cx.shared.can.lock(|can| {
