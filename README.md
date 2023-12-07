@@ -1,6 +1,18 @@
 # Vehicle Controller
 
-Responsible for controlling the main function of the vehicle.
+Responsible for controlling the main function of the vehicle. Uses STM32L432KC.  
+
+### Main functions
+* Send motor control CAN packets to WaveSculptor
+* Reads in data from a linear potentiometer connected to an ADC to determine speed setpoints
+* Parse driver inputs for Cruise control and switching between Reverse/Neutral/Drive
+* Tells the Battery Management System to engage contactors
+* Initialises and configures the Elmar MPPTs
+
+### Important Pins
+PA11 - CAN RX  
+PA12 - CAN TX  
+PC1 - ADC IN (Data pin on a linear potentiometer connected to the cars accelerator pedal)
 
 ## Setup
 
