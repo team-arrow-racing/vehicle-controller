@@ -12,7 +12,7 @@ defmt-rtt = "0.4.0"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 rtic = { version = "2.0.1", features = ["thumbv7-backend"] }
 rtic-monotonics = { version = "1.4.1", features = ["cortex-m-systick", "systick-64bit", "systick-10khz"] }
-stm32h7xx-hal = { version = "0.15.1", features = ["stm32h743v"] }
+stm32h7xx-hal = { version = "0.15.1", features = ["stm32h747cm7"] }
 
 [[bin]]
 name = "vehicle-controller"

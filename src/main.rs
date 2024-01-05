@@ -23,7 +23,7 @@ mod app {
     fn init(cx: init::Context) -> (Shared, Local) {
         let syscfg = cx.device.SYSCFG;
         let pwr = cx.device.PWR.constrain();
-        let pwrcfg = pwr.freeze();
+        let pwrcfg = pwr.smps().freeze();
         let rcc = cx.device.RCC.constrain();
         let clocks = rcc.sysclk(240.MHz()).freeze(pwrcfg, &syscfg);
 
