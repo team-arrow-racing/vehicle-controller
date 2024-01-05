@@ -9,7 +9,8 @@
       "chip": "STM32H755ZITx",
       "coreConfigs": [
         {
-          "programBinary": "${workspaceFolder}/target/thumbv7em-none-eabihf/debug/vehicle-controller"
+          "programBinary": "${workspaceFolder}/target/thumbv7em-none-eabihf/debug/vehicle-controller",
+          "svdFile": "${workspaceFolder}/STM32H7x5_CM7.svd"
         }
       ]
     }
