@@ -201,6 +201,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "fdcan"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "553fb8420a8ca433ed032a3f284deeb95c12e4d3d25cdc15196669a27b2ae34b"
+dependencies = [
+ "bitflags",
+ "nb 1.1.0",
+ "paste",
+ "static_assertions",
+ "vcell",
+ "volatile-register",
+]
+
+[[package]]
 name = "fugit"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -438,6 +452,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
 name = "stm32h7"
 version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -461,6 +481,7 @@ dependencies = [
  "embedded-dma",
  "embedded-hal 0.2.7",
  "embedded-storage",
+ "fdcan",
  "fugit",
  "nb 1.1.0",
  "paste",
@@ -530,6 +551,7 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "defmt-test",
+ "fdcan",
  "panic-probe",
  "rtic",
  "rtic-monotonics",
