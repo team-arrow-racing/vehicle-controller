@@ -19,6 +19,10 @@ Surprisingly, just because we're on an embedded platform, we still have the abil
 
 Just use `cargo test` to run each unit test module (each is flashed and run separately).
 
+### Log Level
+
+The logging level use by defmt can be set with the environment variable `DEFMT_LOG`. Possible values are `trace`, `debug`, `info`, `warn`, `error`, and `off`. By default the log level is set to `info`.
+
 ## References
 
 - [RM0399 STM32H745/755 and STM32H747/757 reference manual ](https://www.st.com/resource/en/reference_manual/rm0399-stm32h745755-and-stm32h747757-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
