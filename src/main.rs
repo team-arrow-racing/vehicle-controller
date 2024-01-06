@@ -23,11 +23,14 @@ mod app {
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
         let syscfg = cx.device.SYSCFG;
-        let pwr = cx.device.PWR.constrain().smps().vos0(&syscfg).freeze();
         let rcc = cx.device.RCC.constrain();
+
+        let pwr = cx.device.PWR.constrain().smps().vos0(&syscfg).freeze();
+
         let clocks = rcc
             .sysclk(480.MHz())
             .pll1_strategy(hal::rcc::PllConfigStrategy::Iterative)
+            .pll1_q_ck(32.MHz())
             .freeze(pwr, &syscfg);
 
         let systick_mono_token = rtic_monotonics::create_systick_token!();
