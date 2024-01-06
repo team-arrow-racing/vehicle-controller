@@ -40,6 +40,8 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
+        // setup and start independent watchdog
+        // initialisation must complete before the watchdog triggers
         let watchdog = {
             let mut wd = IndependentWatchdog::new(cx.device.IWDG1);
             wd.start(100_u32.millis());
@@ -49,6 +51,7 @@ mod app {
         let syscfg = cx.device.SYSCFG;
         let rcc = cx.device.RCC.constrain();
 
+        // configure power domain
         let mut pwr = cx
             .device
             .PWR
@@ -57,15 +60,16 @@ mod app {
             .smps()
             .vos0(&syscfg)
             .freeze();
-
         let backup = pwr.backup().unwrap();
 
+        // configure clocks
         let clocks = rcc
             .sysclk(480.MHz())
             .pll1_strategy(hal::rcc::PllConfigStrategy::Iterative)
             .pll1_q_ck(32.MHz())
             .freeze(pwr, &syscfg);
 
+        // configure monotonic systick
         let systick_mono_token = rtic_monotonics::create_systick_token!();
         Systick::start(
             cx.core.SYST,
@@ -73,8 +77,10 @@ mod app {
             systick_mono_token,
         );
 
+        // take GPIO peripherals
         let gpiob = cx.device.GPIOB.split(clocks.peripheral.GPIOB);
 
+        // configure CAN
         let (fdcan1_ctrl, fdcan1_tx, fdcan1_rx0, fdcan1_rx1) = {
             let fdcan_prec = clocks.peripheral.FDCAN.kernel_clk_mux(FdcanClkSel::Pll1Q);
 
@@ -83,6 +89,7 @@ mod app {
 
             let mut can = cx.device.FDCAN1.fdcan(tx, rx, fdcan_prec);
 
+            // throw error rather than trying to handle unexpected bus behaviour
             can.set_protocol_exception_handling(false);
 
             // k-clock 32MHz, bit rate 500kbit/s, sample point 87.5%
@@ -104,6 +111,7 @@ mod app {
             can.into_normal().split()
         };
 
+        // configure real-time clock
         let rtc = {
             hal::rtc::Rtc::open_or_init(
                 cx.device.RTC,
