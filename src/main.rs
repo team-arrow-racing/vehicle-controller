@@ -6,6 +6,7 @@ use defmt_rtt as _;
 use panic_probe as _;
 use stm32h7xx_hal as hal;
 
+use chrono::NaiveDate;
 use core::num::{NonZeroU16, NonZeroU8};
 use fdcan::{
     config::{DataBitTiming, NominalBitTiming},
@@ -41,7 +42,16 @@ mod app {
         let syscfg = cx.device.SYSCFG;
         let rcc = cx.device.RCC.constrain();
 
-        let pwr = cx.device.PWR.constrain().smps().vos0(&syscfg).freeze();
+        let mut pwr = cx
+            .device
+            .PWR
+            .constrain()
+            .backup_regulator()
+            .smps()
+            .vos0(&syscfg)
+            .freeze();
+
+        let backup = pwr.backup().unwrap();
 
         let clocks = rcc
             .sysclk(480.MHz())
@@ -85,6 +95,19 @@ mod app {
             });
 
             can.into_normal().split()
+        };
+
+        let rtc = {
+            hal::rtc::Rtc::open_or_init(
+                cx.device.RTC,
+                backup.RTC,
+                hal::rtc::RtcClock::Lse {
+                    freq: 32_768.Hz(),
+                    bypass: false,
+                    css: false,
+                },
+                &clocks.clocks,
+            )
         };
 
         let watchdog = {
