@@ -6,7 +6,6 @@ use defmt_rtt as _;
 use panic_probe as _;
 use stm32h7xx_hal as hal;
 
-use chrono::NaiveDate;
 use core::num::{NonZeroU16, NonZeroU8};
 use fdcan::{
     config::{DataBitTiming, NominalBitTiming},
