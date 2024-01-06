@@ -39,6 +39,12 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
+        let watchdog = {
+            let mut wd = IndependentWatchdog::new(cx.device.IWDG1);
+            wd.start(100_u32.millis());
+            wd
+        };
+
         let syscfg = cx.device.SYSCFG;
         let rcc = cx.device.RCC.constrain();
 
@@ -108,12 +114,6 @@ mod app {
                 },
                 &clocks.clocks,
             )
-        };
-
-        let watchdog = {
-            let mut wd = IndependentWatchdog::new(cx.device.IWDG1);
-            wd.start(100_u32.millis());
-            wd
         };
 
         defmt::info!("Initialisation finished.");
