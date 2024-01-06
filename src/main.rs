@@ -12,6 +12,7 @@ use fdcan::{
     FdCanControl, Fifo0, Fifo1, NormalOperationMode, Rx, Tx,
 };
 use hal::gpio::Speed;
+use hal::independent_watchdog::IndependentWatchdog;
 use hal::prelude::*;
 use hal::rcc::rec::FdcanClkSel;
 use hal::{can::Can, device::FDCAN1};
@@ -31,7 +32,9 @@ mod app {
     }
 
     #[local]
-    struct Local {}
+    struct Local {
+        watchdog: IndependentWatchdog,
+    }
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
@@ -84,7 +87,15 @@ mod app {
             can.into_normal().split()
         };
 
+        let watchdog = {
+            let mut wd = IndependentWatchdog::new(cx.device.IWDG1);
+            wd.start(100_u32.millis());
+            wd
+        };
+
         defmt::info!("Initialisation finished.");
+
+        watchdog::spawn().ok();
 
         (
             Shared {
@@ -93,8 +104,16 @@ mod app {
                 fdcan1_rx0,
                 fdcan1_rx1,
             },
-            Local {},
+            Local { watchdog },
         )
+    }
+
+    #[task(local = [watchdog])]
+    async fn watchdog(cx: watchdog::Context) {
+        loop {
+            cx.local.watchdog.feed();
+            Systick::delay(80_u64.millis()).await;
+        }
     }
 }
 
