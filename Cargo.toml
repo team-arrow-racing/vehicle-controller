@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = { version = "0.4.31", default-features = false }
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 defmt = "0.3.5"
 defmt-rtt = "0.4.0"
@@ -13,7 +14,7 @@ fdcan = { version = "0.2.0", features = ["fdcan_h7"] }
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 rtic = { version = "2.0.1", features = ["thumbv7-backend"] }
 rtic-monotonics = { version = "1.4.1", features = ["cortex-m-systick", "systick-64bit", "systick-10khz"] }
-stm32h7xx-hal = { version = "0.15.1", features = ["stm32h747cm7", "can"] }
+stm32h7xx-hal = { version = "0.15.1", features = ["stm32h747cm7", "can", "rtc"] }
 
 [[bin]]
 name = "vehicle-controller"
