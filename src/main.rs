@@ -17,6 +17,7 @@ use hal::gpio::Speed;
 use hal::independent_watchdog::IndependentWatchdog;
 use hal::prelude::*;
 use hal::rcc::rec::FdcanClkSel;
+use hal::rtc::Rtc;
 use hal::{can::Can, device::FDCAN1};
 use rtic_monotonics::systick::*;
 use rtic_monotonics::Monotonic;
@@ -31,6 +32,7 @@ mod app {
         fdcan1_tx: Tx<Can<FDCAN1>, NormalOperationMode>,
         fdcan1_rx0: Rx<Can<FDCAN1>, NormalOperationMode, Fifo0>,
         fdcan1_rx1: Rx<Can<FDCAN1>, NormalOperationMode, Fifo1>,
+        rtc: Rtc,
     }
 
     #[local]
@@ -135,6 +137,7 @@ mod app {
                 fdcan1_tx,
                 fdcan1_rx0,
                 fdcan1_rx1,
+                rtc,
             },
             Local { watchdog },
         )
