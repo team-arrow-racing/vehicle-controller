@@ -23,7 +23,7 @@ bench = false
 harness = false
 
 [[test]]
-name = "sample"
+name = "hardware"
 harness = false
 
 [profile.dev]
