@@ -14,6 +14,7 @@ use fdcan::{
     FdCanControl, Fifo0, Fifo1, NormalOperationMode, Rx, Tx,
 };
 use hal::gpio::Speed;
+use hal::gpio::{ErasedPin, Output, PinState};
 use hal::independent_watchdog::IndependentWatchdog;
 use hal::prelude::*;
 use hal::rcc::rec::FdcanClkSel;
@@ -33,6 +34,9 @@ mod app {
         fdcan1_rx0: Rx<Can<FDCAN1>, NormalOperationMode, Fifo0>,
         fdcan1_rx1: Rx<Can<FDCAN1>, NormalOperationMode, Fifo1>,
         rtc: Rtc,
+        led_status: ErasedPin<Output>,
+        led_warn: ErasedPin<Output>,
+        led_error: ErasedPin<Output>,
     }
 
     #[local]
@@ -81,6 +85,20 @@ mod app {
 
         // take GPIO peripherals
         let gpiob = cx.device.GPIOB.split(clocks.peripheral.GPIOB);
+        let gpioe = cx.device.GPIOE.split(clocks.peripheral.GPIOE);
+
+        let led_status = gpiob
+            .pb0
+            .into_push_pull_output_in_state(PinState::High)
+            .erase();
+        let led_warn = gpioe
+            .pe1
+            .into_push_pull_output_in_state(PinState::High)
+            .erase();
+        let led_error = gpiob
+            .pb14
+            .into_push_pull_output_in_state(PinState::High)
+            .erase();
 
         // configure CAN
         let (fdcan1_ctrl, fdcan1_tx, fdcan1_rx0, fdcan1_rx1) = {
@@ -138,6 +156,9 @@ mod app {
                 fdcan1_rx0,
                 fdcan1_rx1,
                 rtc,
+                led_status,
+                led_warn,
+                led_error,
             },
             Local { watchdog },
         )
