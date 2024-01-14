@@ -50,7 +50,7 @@ mod app {
         // initialisation must complete before the watchdog triggers
         let watchdog = {
             let mut wd = IndependentWatchdog::new(cx.device.IWDG1);
-            wd.start(100_u32.millis());
+            wd.start(250_u32.millis());
             wd
         };
 
