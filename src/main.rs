@@ -230,7 +230,7 @@ mod app {
         defmt::info!("usart2");
         let rx = cx.local.serial_rx;
 
-        defmt::info!("{:?}", block!(rx.read()).unwrap());
+        defmt::info!("{:?}", block!(rx.read()));
     }
 
     #[task(shared = [led], priority=1)]
