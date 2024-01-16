@@ -1,9 +1,9 @@
-/* STM32H755ZI Memory Layout */
 MEMORY
 {
-  FLASH : ORIGIN = 0x08000000, LENGTH = 2M
-
-  /* DTCM */
+  /* STM32H742xI/743xI/753xI       */
+  /* STM32H745xI/747xI/755xI/757xI */
+  /* STM32H7A3xI/7B3xI             */
+  FLASH  : ORIGIN = 0x08000000, LENGTH = 2M
   RAM : ORIGIN = 0x20000000, LENGTH = 128K
 
   /* AXI SRAM */
