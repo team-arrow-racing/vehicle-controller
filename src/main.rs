@@ -153,7 +153,7 @@ mod app {
                 &ccdr.clocks,
             ).unwrap();
 
-            serial.listen(Event::Rxne);
+            serial.listen(Event::Idle);
             serial.enable_dma_rx();
             serial.split()
         };    
