@@ -492,6 +492,7 @@ dependencies = [
  "cast",
  "chrono",
  "cortex-m",
+ "defmt",
  "embedded-dma",
  "embedded-hal 0.2.7",
  "embedded-storage",
