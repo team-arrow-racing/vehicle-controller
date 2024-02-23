@@ -21,3 +21,20 @@ MEMORY
   /* Instruction TCM */
   ITCM  : ORIGIN = 0x00000000, LENGTH = 64K
 }
+
+SECTIONS {
+  .axisram (NOLOAD) : ALIGN(8) {
+    *(.axisram .axisram.*);
+    . = ALIGN(8);
+    } > AXISRAM
+  /* The SRAM1 and SRAM2 section are commonly used as the stack and heap for the
+     CM4 core in dualcore versions and should thus not be used in examples*/
+  .sram3 (NOLOAD) : ALIGN(4) {
+    *(.sram3 .sram3.*);
+    . = ALIGN(4);
+    } > SRAM3
+  .sram4 (NOLOAD) : ALIGN(4) {
+    *(.sram4 .sram4.*);
+    . = ALIGN(4);
+    } > SRAM4
+};
