@@ -300,15 +300,7 @@ mod app {
         });
     }
 
-    #[task(binds = USART2, local = [serial_rx])]
-    fn usart2_callback(mut cx: usart2_callback::Context) {
-        defmt::info!("usart2");
-        let rx = cx.local.serial_rx;
-
-        defmt::info!("{:?}", block!(rx.read()));
-    }
-
-    #[task(shared = [led], priority=1)]
+    #[task(shared = [status_led], priority=1)]
     async fn blink(mut cx: blink::Context) {
         loop {
             cx.shared.status_led.lock(|led| {
