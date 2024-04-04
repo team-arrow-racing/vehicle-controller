@@ -1,10 +1,4 @@
-use stm32h7xx_hal::prelude::*;
-use core::fmt::Write;
-use rtic::Mutex;
 
-use rtic_monotonics::{systick::*, Monotonic};
-use stm32h7xx_hal::nb::block;
-use crate::app::*;
 
 // pub fn usart2_callback(mut cx: usart2_callback::Context) {
 //     defmt::info!("usart2");

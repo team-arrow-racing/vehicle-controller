@@ -1,6 +1,6 @@
 use fdcan::{
     frame::{FrameFormat, TxFrameHeader, RxFrameInfo},
-    id::{ExtendedId, StandardId, Id},
+    id::{StandardId, Id},
 };
 use stm32h7xx_hal::nb::block;
 use rtic::Mutex;
@@ -52,7 +52,7 @@ pub fn can_rx1_pending(mut cx: can_rx1_pending::Context) {
     });
 }
 
-pub async fn can_receive(mut cx: can_receive::Context<'_>, frame: RxFrameInfo, buffer: [u8; 8]) {
+pub async fn can_receive(cx: can_receive::Context<'_>, frame: RxFrameInfo, buffer: [u8; 8]) {
     let id = frame.id;
     match id {
         Id::Standard(id) => defmt::info!("Received Header: {:#02x}", id.as_raw()),

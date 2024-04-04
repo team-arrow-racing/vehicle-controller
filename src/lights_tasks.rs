@@ -29,6 +29,6 @@ pub async fn toggle_indicators(mut cx: toggle_indicators::Context<'_>) {
     }
 }
 
-pub async fn toggle_brakes(mut cx: toggle_brakes::Context<'_>) {
+pub async fn toggle_brakes(cx: toggle_brakes::Context<'_>) {
     // Upon receiving CAN frame indicating that 
 }
