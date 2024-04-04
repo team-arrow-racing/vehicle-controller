@@ -25,48 +25,36 @@ test = false
 bench = false
 harness = false
 
-# cargo build/run
 [profile.dev]
 codegen-units = 1
 debug = 2
-debug-assertions = true # <-
+debug-assertions = true
 incremental = false
-opt-level = "s" # <-
-overflow-checks = true # <-
+opt-level = "s"
+overflow-checks = true
 
-# cargo test
 [profile.test]
 codegen-units = 1
 debug = 2
-debug-assertions = true # <-
+debug-assertions = true
 incremental = false
-opt-level = "s" # <-
-overflow-checks = true # <-
+opt-level = "s"
+overflow-checks = true
 
-# cargo build/run --release
 [profile.release]
 codegen-units = 1
 debug = 2
-debug-assertions = false # <-
+debug-assertions = false
 incremental = false
 lto = 'fat'
-opt-level = "s" # <-
-overflow-checks = false # <-
+opt-level = "s"
+overflow-checks = false
 
-# cargo test --release
 [profile.bench]
 codegen-units = 1
 debug = 2
-debug-assertions = false # <-
+debug-assertions = false
 incremental = false
 lto = 'fat'
-opt-level = "s" # <-
-overflow-checks = false # <-
-
-# uncomment this to switch from the crates.io version of defmt to its git version
-# check app-template's README for instructions
-# [patch.crates-io]
-# defmt = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }
-# defmt-rtt = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }
-# defmt-test = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }
-# panic-probe = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }
+opt-level = "s"
+overflow-checks = false
