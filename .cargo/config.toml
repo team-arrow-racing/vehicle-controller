@@ -16,3 +16,6 @@ target = "thumbv7em-none-eabihf" # Cortex-M4F and Cortex-M7F (with FPU)
 rb = "run --bin"
 rrb = "run --release --bin"
 bbr = "build --release --bin"
+
+[env]
+DEFMT_LOG = "info"
