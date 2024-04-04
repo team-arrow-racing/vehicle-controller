@@ -1,11 +1,11 @@
+use crate::app::*;
 use fdcan::{
-    frame::{FrameFormat, TxFrameHeader, RxFrameInfo},
-    id::{StandardId, Id},
+    frame::{FrameFormat, RxFrameInfo, TxFrameHeader},
+    id::{Id, StandardId},
 };
-use stm32h7xx_hal::nb::block;
 use rtic::Mutex;
 use rtic_monotonics::systick::*;
-use crate::app::*;
+use stm32h7xx_hal::nb::block;
 
 pub async fn can_gen(mut cx: can_gen::Context<'_>) {
     loop {
@@ -16,7 +16,7 @@ pub async fn can_gen(mut cx: can_gen::Context<'_>) {
                 id: StandardId::new(0x42).unwrap().into(),
                 frame_format: FrameFormat::Fdcan,
                 bit_rate_switching: true,
-                marker: None
+                marker: None,
             };
 
             let buffer = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -33,7 +33,7 @@ pub fn can_rx0_pending(mut cx: can_rx0_pending::Context) {
     cx.shared.fdcan1_rx0.lock(|rx| {
         let mut buffer = [0_u8; 8];
         let rxframe = block!(rx.receive(&mut buffer));
-        
+
         if let Ok(rxframe) = rxframe {
             can_receive::spawn(rxframe.unwrap(), buffer).ok();
         }

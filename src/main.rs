@@ -3,12 +3,13 @@
 #![feature(type_alias_impl_trait)]
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-mod can_tasks;
-mod lights_tasks;
+mod canbus;
+mod lighting;
 mod serial_tasks;
 
-use crate::can_tasks::*;
-use crate::lights_tasks::*;
+// import tasks
+use canbus::*;
+use lighting::*;
 
 use defmt_rtt as _;
 use panic_probe as _; // global logger

@@ -1,7 +1,7 @@
-use stm32h7xx_hal::gpio::PinState;
+use crate::app::*;
 use rtic::Mutex;
 use rtic_monotonics::{systick::*, Monotonic};
-use crate::app::*;
+use stm32h7xx_hal::gpio::PinState;
 
 pub async fn toggle_indicators(mut cx: toggle_indicators::Context<'_>) {
     loop {
@@ -12,16 +12,12 @@ pub async fn toggle_indicators(mut cx: toggle_indicators::Context<'_>) {
         let on: bool = (time.duration_since_epoch().to_millis() % 1000) > 500;
 
         cx.shared.is_left_ind_on.lock(|l_on| {
-            l_light.set_state(PinState::from(
-                *l_on && on
-            ));
+            l_light.set_state(PinState::from(*l_on && on));
             defmt::trace!("l light {}", l_light.is_set_high());
         });
 
         cx.shared.is_right_ind_on.lock(|r_on| {
-            r_light.set_state(PinState::from(
-                *r_on && on
-            ));
+            r_light.set_state(PinState::from(*r_on && on));
             defmt::trace!("r light {}", r_light.is_set_high());
         });
 
@@ -30,5 +26,5 @@ pub async fn toggle_indicators(mut cx: toggle_indicators::Context<'_>) {
 }
 
 pub async fn toggle_brakes(cx: toggle_brakes::Context<'_>) {
-    // Upon receiving CAN frame indicating that 
+    // Upon receiving CAN frame indicating that
 }

@@ -1,5 +1,3 @@
-
-
 // pub fn usart2_callback(mut cx: usart2_callback::Context) {
 //     defmt::info!("usart2");
 //     let rx = cx.local.serial_rx;
