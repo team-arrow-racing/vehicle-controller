@@ -39,13 +39,9 @@ pub fn init(mut cx: init::Context) -> (Shared, Local) {
         .freeze(pwr, &cx.device.SYSCFG);
 
     // GPIO
-    let gpioa = cx.device.GPIOA.split(ccdr.peripheral.GPIOA);
-    let gpiob = cx.device.GPIOB.split(ccdr.peripheral.GPIOB);
     let gpioc = cx.device.GPIOC.split(ccdr.peripheral.GPIOC);
     let gpiod = cx.device.GPIOD.split(ccdr.peripheral.GPIOD);
     let gpioe = cx.device.GPIOE.split(ccdr.peripheral.GPIOE);
-    let gpiog = cx.device.GPIOG.split(ccdr.peripheral.GPIOG);
-    let gpioh = cx.device.GPIOH.split(ccdr.peripheral.GPIOH);
 
     // Button
     let mut button = gpioc.pc13.into_floating_input();
@@ -148,20 +144,6 @@ pub fn init(mut cx: init::Context) -> (Shared, Local) {
         wd
     };
 
-    // configure real-time clock
-    // let rtc = {
-    //     Rtc::open_or_init(
-    //         cx.device.RTC,
-    //         backup.RTC,
-    //         RtcClock::Lse {
-    //             freq: 32_768.Hz(),
-    //             bypass: false,
-    //             css: false,
-    //         },
-    //         &ccdr.clocks,
-    //     )
-    // };
-
     // Monotonics
     let token = rtic_monotonics::create_systick_token!();
     Systick::start(cx.core.SYST, ccdr.clocks.sysclk().to_Hz(), token);
@@ -169,8 +151,6 @@ pub fn init(mut cx: init::Context) -> (Shared, Local) {
     watchdog::spawn().ok();
     blink::spawn().ok();
     transmit_uart::spawn().ok();
-    // serial_gen::spawn().ok();
-    // can_gen::spawn().ok();
 
     defmt::info!("Initialisation finished.");
 

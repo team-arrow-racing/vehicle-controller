@@ -24,7 +24,3 @@ pub async fn toggle_indicators(mut cx: toggle_indicators::Context<'_>) {
         Systick::delay(10_u64.millis()).await;
     }
 }
-
-pub async fn toggle_brakes(cx: toggle_brakes::Context<'_>) {
-    // Upon receiving CAN frame indicating that
-}

@@ -6,7 +6,6 @@
 mod canbus;
 mod init;
 mod lighting;
-mod serial_tasks;
 
 // import tasks
 use canbus::*;
@@ -18,7 +17,7 @@ use defmt_rtt as _;
 use panic_probe as _;
 use stm32h7xx_hal as hal;
 
-use fdcan::{ExternalLoopbackMode, FdCanControl, Fifo0, Fifo1, Rx, Tx};
+use fdcan::{frame::RxFrameInfo, ExternalLoopbackMode, FdCanControl, Fifo0, Fifo1, Rx, Tx};
 use hal::{
     can::Can,
     dma::{dma::Stream0, DBTransfer, MemoryToPeripheral, Transfer},
@@ -30,12 +29,15 @@ use hal::{
     pac::FDCAN1,
     serial,
 };
-use rtic_monotonics::systick::ExtU64;
-use rtic_monotonics::systick::Systick;
-use rtic_monotonics::Monotonic;
+use rtic_monotonics::{
+    systick::{ExtU64, Systick},
+    Monotonic,
+};
 
 #[rtic::app(device = stm32h7xx_hal::pac, dispatchers = [UART4, SPI1])]
 mod app {
+    use super::*;
+
     type FdCanMode = ExternalLoopbackMode;
     type RxTransfer<'a> = Transfer<
         Stream1<pac::DMA1>,
@@ -52,10 +54,6 @@ mod app {
         DBTransfer,
     >;
 
-    use fdcan::frame::RxFrameInfo;
-
-    use super::*;
-    // Shared resources go here
     #[shared]
     pub struct Shared {
         pub status_led: PE1<Output<PushPull>>,
@@ -65,18 +63,14 @@ mod app {
         pub fdcan1_rx1: Rx<Can<FDCAN1>, FdCanMode, Fifo1>,
         pub is_left_ind_on: bool,
         pub is_right_ind_on: bool,
-        // rtc: Rtc,
         pub receive: RxTransfer<'static>,
         pub transfer: TxTransfer,
     }
 
-    // Local resources go here
     #[local]
     pub struct Local {
         pub button: PC13<Input>,
         pub watchdog: IndependentWatchdog,
-        // serial_rx: serial::Rx<stm32::USART2>,
-        // serial_tx: serial::Tx<stm32::USART2>,
         pub left_ind_light: PC1<Output<PushPull>>,
         pub right_ind_light: PC0<Output<PushPull>>,
         pub rx_buffer: Option<&'static mut [u8; 10]>,
@@ -169,9 +163,6 @@ mod app {
         #[init]
         fn init(mut cx: init::Context) -> (Shared, Local);
 
-        #[task(shared = [fdcan1_tx], priority=1)]
-        async fn can_gen(mut cx: can_gen::Context);
-
         #[task(binds = FDCAN1_IT0, priority = 2, shared = [fdcan1_rx0])]
         fn can_rx0_pending(mut cx: can_rx0_pending::Context);
 
@@ -183,15 +174,6 @@ mod app {
 
         #[task(shared = [is_left_ind_on, is_right_ind_on], local = [left_ind_light, right_ind_light], priority=1)]
         async fn toggle_indicators(mut cx: toggle_indicators::Context);
-
-        #[task(priority = 1)]
-        async fn toggle_brakes(mut cx: toggle_brakes::Context);
-
-        // #[task(binds = USART2, local = [serial_rx, rx_buffer, buf_index])]
-        // fn usart2_callback(mut cx: usart2_callback::Context);
-
-        // #[task(local = [serial_tx], priority=1)]
-        // async fn serial_gen(mut cx: serial_gen::Context);
     }
 }
 
