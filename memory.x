@@ -1,9 +1,9 @@
-/* STM32H755ZI Memory Layout */
 MEMORY
 {
-  FLASH : ORIGIN = 0x08000000, LENGTH = 2M
-
-  /* DTCM */
+  /* STM32H742xI/743xI/753xI       */
+  /* STM32H745xI/747xI/755xI/757xI */
+  /* STM32H7A3xI/7B3xI             */
+  FLASH  : ORIGIN = 0x08000000, LENGTH = 2M
   RAM : ORIGIN = 0x20000000, LENGTH = 128K
 
   /* AXI SRAM */
@@ -21,3 +21,20 @@ MEMORY
   /* Instruction TCM */
   ITCM  : ORIGIN = 0x00000000, LENGTH = 64K
 }
+
+SECTIONS {
+  .axisram (NOLOAD) : ALIGN(8) {
+    *(.axisram .axisram.*);
+    . = ALIGN(8);
+    } > AXISRAM
+  /* The SRAM1 and SRAM2 section are commonly used as the stack and heap for the
+     CM4 core in dualcore versions and should thus not be used in examples*/
+  .sram3 (NOLOAD) : ALIGN(4) {
+    *(.sram3 .sram3.*);
+    . = ALIGN(4);
+    } > SRAM3
+  .sram4 (NOLOAD) : ALIGN(4) {
+    *(.sram4 .sram4.*);
+    . = ALIGN(4);
+    } > SRAM4
+};
