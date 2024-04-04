@@ -12,7 +12,7 @@ embedded-hal = "0.2.7"
 fdcan = { version = "0.2.0", features = ["fdcan_h7"] }
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 rtic = { version = "2.1.1", features = ["thumbv7-backend"] }
-stm32h7xx-hal = { version = "0.15.1", features = [
+stm32h7xx-hal = { version = "0.16.0", features = [
     "stm32h747cm7",
     "can",
     "rtc",
