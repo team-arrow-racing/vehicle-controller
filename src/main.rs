@@ -5,10 +5,12 @@
 
 mod canbus;
 mod init;
+mod radio;
 
 // import tasks
 use canbus::*;
 use init::*;
+use radio::*;
 
 // global logger
 use defmt_rtt as _;
@@ -16,8 +18,16 @@ use panic_probe as _;
 use stm32h7xx_hal as hal;
 
 use fdcan::{frame::RxFrameInfo, FdCanControl, Fifo0, Fifo1, NormalOperationMode, Rx, Tx};
-use hal::gpio::ErasedPin;
-use hal::{can::Can, gpio::Output, independent_watchdog::IndependentWatchdog, pac::FDCAN1};
+use hal::{
+    can::Can,
+    dma::{dma::Stream1, DBTransfer, PeripheralToMemory, Transfer},
+    gpio::ErasedPin,
+    gpio::Output,
+    independent_watchdog::IndependentWatchdog,
+    pac::FDCAN1,
+    pac::{DMA1, USART3},
+    serial,
+};
 use rtic_monotonics::{
     systick::{ExtU64, Systick},
     Monotonic,
@@ -35,6 +45,14 @@ mod app {
         pub fdcan1_tx: Tx<Can<FDCAN1>, FdCanMode>,
         pub fdcan1_rx0: Rx<Can<FDCAN1>, FdCanMode, Fifo0>,
         pub fdcan1_rx1: Rx<Can<FDCAN1>, FdCanMode, Fifo1>,
+
+        pub radio_dma_transfer: Transfer<
+            Stream1<DMA1>,
+            serial::Rx<USART3>,
+            PeripheralToMemory,
+            &'static mut [u8; 256],
+            DBTransfer,
+        >,
     }
 
     #[local]
@@ -65,6 +83,9 @@ mod app {
 
         #[task(priority = 1)]
         async fn can_receive(mut cx: can_receive::Context, frame: RxFrameInfo, buffer: [u8; 8]);
+
+        #[task(binds = DMA1_STR1, shared = [radio_dma_transfer])]
+        fn radio_ingress(cx: radio_ingress::Context);
     }
 }
 

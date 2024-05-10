@@ -5,12 +5,15 @@ use crate::hal::{
     prelude::*,
     rcc::{self, rec::FdcanClkSel},
 };
+use crate::radio;
 use core::num::{NonZeroU16, NonZeroU8};
 use fdcan::{
     config::{DataBitTiming, NominalBitTiming},
     interrupt::{InterruptLine, Interrupts},
 };
 use rtic_monotonics::systick::*;
+use stm32h7xx_hal::dma::dma::{DmaConfig, StreamsTuple};
+use stm32h7xx_hal::dma::{PeripheralToMemory, Transfer};
 
 pub fn init(cx: init::Context) -> (Shared, Local) {
     defmt::info!("init");
@@ -50,6 +53,7 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
 
     // GPIO
     let gpiob = cx.device.GPIOB.split(ccdr.peripheral.GPIOB);
+    let gpioc = cx.device.GPIOC.split(ccdr.peripheral.GPIOC);
     let gpiod = cx.device.GPIOD.split(ccdr.peripheral.GPIOD);
 
     // Status LEDs
@@ -90,6 +94,43 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
         can.into_normal().split()
     };
 
+    let (radio_serial_tx, radio_serial_rx) = {
+        let tx = gpioc.pc10.into_alternate();
+        let rx = gpioc.pc11.into_alternate();
+
+        cx.device
+            .USART3
+            .serial(
+                (tx, rx),
+                115_200.bps(),
+                ccdr.peripheral.USART3,
+                &ccdr.clocks,
+            )
+            .unwrap()
+            .split()
+    };
+
+    let radio_ingress_buffer: &'static mut [u8; 256] = unsafe {
+        radio::INGRESS_BUFFER.write([0; 256]);
+        radio::INGRESS_BUFFER.assume_init_mut()
+    };
+
+    let radio_dma_streams = StreamsTuple::new(cx.device.DMA1, ccdr.peripheral.DMA1);
+
+    let radio_dma_config = DmaConfig::default().memory_increment(true);
+
+    let mut radio_dma_transfer: Transfer<_, _, PeripheralToMemory, _, _> = Transfer::init(
+        radio_dma_streams.1,
+        radio_serial_rx,
+        radio_ingress_buffer,
+        None,
+        radio_dma_config,
+    );
+
+    radio_dma_transfer.start(|serial| {
+        serial.enable_dma_rx();
+    });
+
     watchdog::spawn().ok();
 
     defmt::info!("Initialisation finished.");
@@ -100,6 +141,7 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
             fdcan1_tx,
             fdcan1_rx0,
             fdcan1_rx1,
+            radio_dma_transfer,
         },
         Local {
             watchdog,
