@@ -27,6 +27,17 @@ crc = "3.0"
 zerocopy = "0.6"
 byteorder = { version = "1.4", default-features = false }
 
+[dependencies.solar-car]
+version = "0.1.1"
+git = "https://github.com/team-arrow-racing/solar-car-common.git"
+#branch = "changes-for-fvc"
+rev = "0bcf683"
+
+[dependencies.j1939]
+version = "0.1.1"
+features = ["bxcan"]
+git = "https://github.com/team-arrow-racing/sae-j1939-rs"
+
 [[bin]]
 name = "vehicle-controller"
 test = false

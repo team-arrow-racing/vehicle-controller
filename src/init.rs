@@ -1,4 +1,4 @@
-use crate::app::{init, watchdog, Local, Shared};
+use crate::app::{init, watchdog, Lights, Local, Shared};
 use crate::hal::{
     gpio::Speed,
     independent_watchdog::IndependentWatchdog,
@@ -49,13 +49,27 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
     );
 
     // GPIO
+    let gpioa = cx.device.GPIOA.split(ccdr.peripheral.GPIOA);
     let gpiob = cx.device.GPIOB.split(ccdr.peripheral.GPIOB);
     let gpiod = cx.device.GPIOD.split(ccdr.peripheral.GPIOD);
+    
+
 
     // Status LEDs
     let led_ok = gpiob.pb0.into_push_pull_output().erase();
     let led_warn = gpiob.pb7.into_push_pull_output().erase();
     let led_error = gpiob.pb14.into_push_pull_output().erase();
+
+    //Light outputs
+    let brake_light_output = gpioa.pa1.into_push_pull_output().erase();
+    let right_indicator_output = gpioa.pa2.into_push_pull_output().erase();
+    let left_indicator_output = gpioa.pa3.into_push_pull_output().erase();
+
+    let light_states = Lights {
+        brake_lights: 0,
+        right_indicator: 0,
+        left_indicator: 0
+    };
 
     // CAN
     let (fdcan1_ctrl, fdcan1_tx, fdcan1_rx0, fdcan1_rx1) = {
@@ -100,12 +114,16 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
             fdcan1_tx,
             fdcan1_rx0,
             fdcan1_rx1,
+            light_states,
         },
         Local {
             watchdog,
             led_ok,
             led_warn,
             led_error,
+            brake_light_output,
+            right_indicator_output,
+            left_indicator_output,
         },
     )
 }
