@@ -3,6 +3,7 @@
 #![feature(type_alias_impl_trait)]
 #![allow(clippy::transmute_ptr_to_ptr)]
 
+mod async_io_adapters;
 mod canbus;
 mod init;
 mod radio;
