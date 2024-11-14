@@ -32,7 +32,7 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
         .PWR
         .constrain()
         .backup_regulator()
-        .smps()
+        .ldo()
         .vos0(&cx.device.SYSCFG)
         .freeze();
 
