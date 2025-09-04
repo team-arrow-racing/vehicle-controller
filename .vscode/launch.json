@@ -6,11 +6,10 @@
       "type": "probe-rs-debug",
       "request": "launch",
       "name": "probe_rs Executable Test",
-      "chip": "STM32H755ZITx",
+      "chip": "STM32G431RB",
       "coreConfigs": [
         {
-          "programBinary": "${workspaceFolder}/target/thumbv7em-none-eabihf/debug/vehicle-controller",
-          "svdFile": "${workspaceFolder}/STM32H7x5_CM7.svd"
+          "programBinary": "${workspaceFolder}/target/thumbv7em-none-eabihf/debug/vehicle-controller-radio"
         }
       ]
     }
