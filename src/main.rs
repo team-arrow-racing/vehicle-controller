@@ -9,6 +9,7 @@ use panic_probe as _;
 use hal::gpio::{Alternate, Pin};
 use hal::pac::USART1;
 use hal::serial::{NoDMA, Rx, Tx};
+use hal::can::Can;
 use stm32g4xx_hal as hal;
 
 use rtic_monotonics::{Monotonic, systick::Systick};
@@ -22,21 +23,41 @@ use init::*;
 mod app {
     use super::*;
     #[shared]
-    pub struct Shared {}
+    pub struct Shared {
+        pub can1: fdcan::FdCan<Can<hal::pac::FDCAN1>, fdcan::NormalOperationMode>,
+    }
 
     #[local]
     pub struct Local {
-        pub tx: Tx<USART1, Pin<'C', 4, Alternate<7>>, NoDMA>,
-        pub rx: Rx<USART1, Pin<'C', 5, Alternate<7>>, NoDMA>,
+        pub usart_tx: Tx<USART1, Pin<'C', 4, Alternate<7>>, NoDMA>,
+        pub usart_rx: Rx<USART1, Pin<'C', 5, Alternate<7>>, NoDMA>,
     }
 
     extern "Rust" {
         #[init]
         fn init(mut cx: init::Context) -> (Shared, Local);
     }
-    #[task(binds = USART1, local = [rx])]
+    #[task(binds = USART1, local = [usart_rx])]
     fn radio_interrupt(cx: radio_interrupt::Context) {
-        radio::parse_message(cx.local.rx);
+        radio::parse_message(cx.local.usart_rx);
+    }
+
+    #[task(binds = FDCAN1_IT0, shared = [can1])]
+    fn can1_interrupt(mut cx: can1_interrupt::Context) {
+        let mut buffer: [u8; 8] = [0; 8];
+        cx.shared.can1.lock(|can1| {
+            if let Ok(_rxreader) = can1.receive0(&mut buffer) {
+                defmt::info!("Received CAN message: {:x}", buffer);
+            }
+        });
+    }
+
+    #[idle]
+    fn idle(_cx: idle::Context) -> ! {
+        loop {
+            // Sleep until next interrupt
+            cortex_m::asm::wfi();
+        }
     }
 }
 
