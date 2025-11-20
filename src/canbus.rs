@@ -21,9 +21,4 @@ pub fn fdcan_tx(data: &[u8], can: &mut fdcan::FdCan<Can<hal::pac::FDCAN1>, fdcan
 
     defmt::info!("Transmit initial message");
     block!(can.transmit(header, &buffer)).unwrap();
-
-    #[allow(irrefutable_let_patterns)]
-    if let Ok(rxheader) = block!(can.receive0(&mut buffer)) {
-        defmt::info!("Message: {}", buffer)
-    }
 }

@@ -48,8 +48,11 @@ mod app {
     fn can1_interrupt(mut cx: can1_interrupt::Context) {
         let mut buffer: [u8; 8] = [0; 8];
         cx.shared.can1.lock(|can1| {
-            if let Ok(_rxreader) = can1.receive0(&mut buffer) {
-                defmt::info!("Received CAN message: {:x}", buffer);
+            if can1.has_interrupt(fdcan::interrupt::Interrupt::RxFifo0NewMsg) {
+                can1.clear_interrupt(fdcan::interrupt::Interrupt::RxFifo0NewMsg);
+                if let Ok(_rxreader) = can1.receive0(&mut buffer) {
+                    defmt::info!("Received CAN message: {:x}", buffer);
+                }
             }
         });
     }

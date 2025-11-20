@@ -5,9 +5,11 @@ use defmt_rtt as _;
 use panic_probe as _;
 
 use fdcan::{
-    config::NominalBitTiming,
+    config::{InterruptLine, NominalBitTiming},
     filter::{StandardFilter, StandardFilterSlot},
+    interrupt::Interrupts,
 };
+use stm32g4xx_hal as hal;
 use hal::can::CanExt;
 use hal::gpio::Speed;
 use hal::prelude::*;
@@ -17,7 +19,6 @@ use hal::serial::*;
 use hal::time::RateExtU32;
 use panic_probe as _;
 use rtic_monotonics::systick::Systick;
-use stm32g4xx_hal as hal;
 
 pub fn init(cx: init::Context) -> (Shared, Local) {
     defmt::info!("Team Arrow Vehicle Controller");
@@ -30,6 +31,7 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
     let rcc = dp.RCC.constrain();
     let pwr = dp.PWR.constrain().freeze();
     let mut rcc = rcc.freeze(rcc::Config::hse(24.MHz()), pwr);
+    // let mut rcc = rcc.freeze(rcc::Config::hsi(), pwr);
 
     let btr = NominalBitTiming {
         prescaler: NonZeroU16::new(12).unwrap(),
@@ -82,6 +84,9 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
             StandardFilterSlot::_0,
             StandardFilter::accept_all_into_fifo0(),
         );
+        can.enable_interrupt_line(InterruptLine::_0, true);
+        can.enable_interrupt_line(InterruptLine::_1, true);
+        can.enable_interrupts(Interrupts::RX_FIFO0_NEW_MSG | Interrupts::RX_FIFO1_NEW_MSG);
         can.into_external_loopback()
         // can.into_normal()
     };
