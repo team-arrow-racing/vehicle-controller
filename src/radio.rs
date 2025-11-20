@@ -8,7 +8,7 @@ use hal::serial::*;
 use panic_probe as _;
 use stm32g4xx_hal as hal;
 
-pub fn radio_send(data: &[u8], tx: &mut Tx<USART1, Pin<'C', 4, Alternate<7>>, NoDMA>) {
+pub fn radio_tx(data: &[u8], tx: &mut Tx<USART1, Pin<'C', 4, Alternate<7>>, NoDMA>) {
     let preamble = [0x02, 0x00, data.len() as u8];
     let mut check: u8 = 0;
     for byte in preamble {
@@ -22,10 +22,13 @@ pub fn radio_send(data: &[u8], tx: &mut Tx<USART1, Pin<'C', 4, Alternate<7>>, No
     tx.write_all(&[check]).unwrap();
 }
 
-pub fn parse_message(rx: &mut Rx<USART1, Pin<'C', 5, Alternate<7>>, NoDMA>) -> usize {
+pub fn radio_rx(rx: &mut Rx<USART1, Pin<'C', 5, Alternate<7>>, NoDMA>) -> usize {
     let mut buffer = [0; 256];
     loop {
-        rx.read(&mut buffer[..1]).unwrap();
+        if rx.read(&mut buffer[..1]).is_err() {
+            defmt::warn!("radio: Read Error!");
+            return 0;
+        }
         if buffer[0] == 0x02 {
             break;
         }
@@ -34,7 +37,9 @@ pub fn parse_message(rx: &mut Rx<USART1, Pin<'C', 5, Alternate<7>>, NoDMA>) -> u
         }
     }
 
-    rx.read(&mut buffer[1..2]).unwrap();
+    if rx.read(&mut buffer[1..2]).is_err() {
+        return 0;
+    }
 
     let mut len = 0;
 
@@ -49,16 +54,16 @@ pub fn parse_message(rx: &mut Rx<USART1, Pin<'C', 5, Alternate<7>>, NoDMA>) -> u
             }
             if buffer[3 + len] != check {
                 defmt::warn!(
-                    "Checksum mismatch: expected {}, got {}",
+                    "radio: Checksum mismatch: expected {}, got {}",
                     check,
                     buffer[3 + len]
                 );
                 return 0;
             }
-            defmt::debug!("Received message: {}", &buffer[3..3 + len - 1]);
+            defmt::debug!("radio: Received message: {}", &buffer[3..3 + len - 1]);
         }
         _ => {
-            defmt::warn!("Unknown message type: {}", buffer[1]);
+            defmt::warn!("radio: Unknown message type: {}", buffer[1]);
         }
     }
 

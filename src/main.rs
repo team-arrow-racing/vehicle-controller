@@ -16,15 +16,17 @@ use rtic_monotonics::{Monotonic, systick::Systick};
 
 mod init;
 mod radio;
+mod canbus;
 
 use init::*;
 
 #[rtic::app(device = hal::pac)]
 mod app {
     use super::*;
+    type CanType = fdcan::ExternalLoopbackMode;
     #[shared]
     pub struct Shared {
-        pub can1: fdcan::FdCan<Can<hal::pac::FDCAN1>, fdcan::NormalOperationMode>,
+        pub can1: fdcan::FdCan<Can<hal::pac::FDCAN1>, CanType>,
     }
 
     #[local]
@@ -39,7 +41,7 @@ mod app {
     }
     #[task(binds = USART1, local = [usart_rx])]
     fn radio_interrupt(cx: radio_interrupt::Context) {
-        radio::parse_message(cx.local.usart_rx);
+        radio::radio_rx(cx.local.usart_rx);
     }
 
     #[task(binds = FDCAN1_IT0, shared = [can1])]
@@ -56,7 +58,7 @@ mod app {
     fn idle(_cx: idle::Context) -> ! {
         loop {
             // Sleep until next interrupt
-            cortex_m::asm::wfi();
+            // cortex_m::asm::wfi();
         }
     }
 }

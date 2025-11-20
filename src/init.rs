@@ -1,4 +1,4 @@
-use crate::app::{Local, Shared, init};
+use crate::{app::{Local, Shared, init}, canbus};
 
 use core::num::{NonZeroU8, NonZeroU16};
 use defmt_rtt as _;
@@ -14,6 +14,7 @@ use hal::prelude::*;
 use hal::rcc;
 use hal::rcc::RccExt;
 use hal::serial::*;
+use hal::time::RateExtU32;
 use panic_probe as _;
 use rtic_monotonics::systick::Systick;
 use stm32g4xx_hal as hal;
@@ -28,7 +29,7 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
     defmt::info!("init: clocks: Starting...");
     let rcc = dp.RCC.constrain();
     let pwr = dp.PWR.constrain().freeze();
-    let mut rcc = rcc.freeze(rcc::Config::hsi(), pwr);
+    let mut rcc = rcc.freeze(rcc::Config::hse(24.MHz()), pwr);
 
     let btr = NominalBitTiming {
         prescaler: NonZeroU16::new(12).unwrap(),
@@ -71,7 +72,7 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
     usart_rx.listen();
 
     defmt::info!("init: can: Initialising...");
-    let can1 = {
+    let mut can1 = {
         let rx = gpiob.pb8.into_alternate().speed(Speed::VeryHigh);
         let tx = gpiob.pb9.into_alternate().speed(Speed::VeryHigh);
         let mut can = dp.FDCAN1.fdcan(tx, rx, &mut rcc);
@@ -81,9 +82,11 @@ pub fn init(cx: init::Context) -> (Shared, Local) {
             StandardFilterSlot::_0,
             StandardFilter::accept_all_into_fifo0(),
         );
-        // can.into_external_loopback()
-        can.into_normal()
+        can.into_external_loopback()
+        // can.into_normal()
     };
+
+    canbus::fdcan_tx(&[], &mut can1);
 
     defmt::info!("init: Finished Initialisation!");
 
